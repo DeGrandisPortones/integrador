@@ -1,0 +1,509 @@
+:root {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #f4f4f7;
+}
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* ===== HEADER / NAV / SEARCH ===== */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.nav {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+
+.nav-btn {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #e5e7eb;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.nav-btn.active {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-form input {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+}
+
+.search-form button {
+  padding: 6px 10px;
+  border: none;
+  background: #2563eb;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.search-form button[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ===== MENSAJES ===== */
+
+.error {
+  color: #b91c1c;
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+
+.info {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+/* ===== BOTÓN GUARDAR CAMBIOS ===== */
+
+.save-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: #16a34a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.save-btn:hover {
+  background: #15803d;
+}
+
+/* ===== TABLA GENERAL ===== */
+
+.table-wrapper {
+  flex: 1;
+  overflow-x: auto;  /* scroll horizontal */
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  max-height: calc(100vh - 200px);
+}
+
+/* tabla para todas las páginas */
+.data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  table-layout: fixed;      /* columnas más uniformes */
+  min-width: 1400px;        /* fuerza scroll horizontal si la pantalla es más chica */
+}
+
+.data-table th,
+.data-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;  /* sólo línea horizontal, sin bordes verticales */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 110px;                  /* ancho parecido entre columnas */
+}
+
+/* columnas muy chicas (ID / NV) un poco más angostas */
+.data-table th:first-child,
+.data-table td:first-child {
+  min-width: 60px;
+}
+.data-table th:nth-child(2),
+.data-table td:nth-child(2) {
+  min-width: 70px;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 2;
+  font-weight: 600;
+}
+
+/* ===== FILA DE FÓRMULAS (inputs del header) ===== */
+
+.formula-input-header {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 11px;
+  padding: 2px 4px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+}
+
+.col-error {
+  font-size: 11px;
+  color: #b91c1c;
+}
+
+/* ===== CELDAS EDITABLES (tabla principal) ===== */
+
+.cell-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: none;             /* sin borde, aspecto de texto plano */
+  background: transparent;
+}
+
+.cell-input:focus {
+  outline: 1px solid rgba(37, 99, 235, 0.35);
+  background: #eff6ff;
+}
+
+/* ===== PÁGINA IMPORT / FORMULAS ===== */
+
+.import-panel {
+  margin-bottom: 12px;
+}
+
+.import-file-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.import-file-label input[type='file'] {
+  font-size: 13px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  margin-right: 6px;
+}
+
+.badge-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-warn {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.badge-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.hint {
+  font-size: 11px;
+  color: #4b5563;
+}
+
+/* ===== PÁGINA DE FÓRMULAS ===== */
+
+.formulas-page {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.formulas-panel {
+  width: 100%;
+  max-width: 1200px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  padding: 12px 14px 16px;
+  box-sizing: border-box;
+}
+
+.formulas-panel h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.formulas-panel .hint {
+  margin: 2px 0 10px;
+}
+
+/* fila NV de prueba + botón */
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin: 8px 0 6px;
+}
+
+.field-row label {
+  font-size: 13px;
+}
+
+.field-row input[type='text'] {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  font-size: 13px;
+}
+
+/* botón gris para acciones secundarias (Cargar portón) */
+.btn-secondary {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #f3f4f6;
+  cursor: pointer;
+  font-size: 13px;
+  color: #111827;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* botón chiquito de disco 💾 en cada fila */
+.btn-small {
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.btn-small:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.btn-small:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* tabla de fórmulas: un poquito más ancha y con mejor comportamiento en la col de fórmula */
+.formulas-page .table-wrapper {
+  margin-top: 8px;
+  max-height: 60vh;
+}
+
+.formulas-page .data-table {
+  min-width: 900px;
+}
+
+/* Dejo que la fórmula (columna 2) pueda cortar línea para no generar columnas gigantes */
+.formulas-page .data-table th:nth-child(2),
+.formulas-page .data-table td:nth-child(2) {
+  white-space: normal;
+}
+
+/* Ajusto un poco el ancho relativo de las columnas:
+   1) Propiedad: chico
+   2) Fórmula: más ancho
+   3) Pre / 4) Post: medianos
+*/
+.formulas-page .data-table th:nth-child(1),
+.formulas-page .data-table td:nth-child(1) {
+  min-width: 150px;
+}
+
+.formulas-page .data-table th:nth-child(2),
+.formulas-page .data-table td:nth-child(2) {
+  min-width: 320px;
+}
+
+.formulas-page .data-table th:nth-child(3),
+.formulas-page .data-table td:nth-child(3),
+.formulas-page .data-table th:nth-child(4),
+.formulas-page .data-table td:nth-child(4) {
+  min-width: 160px;
+}
+
+/* El input de fórmula dentro de la tabla de fórmulas, un poco más cómodo */
+.formulas-page .formula-input-header {
+  font-size: 12px;
+  padding: 4px 6px;
+  background: #f9fafb;
+}
+
+/* mensaje al pie cuando no hay NV de prueba cargado */
+.formulas-page p.hint:last-of-type {
+  margin-top: 10px;
+}
+
+/* ==== Página de importación de Excel ==== */
+
+.import-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.import-panel {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e5e7eb;
+}
+
+.import-panel h2 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+.import-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.import-field {
+  flex: 1 1 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.import-field label {
+  font-size: 13px;
+  color: #111827;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.import-field input,
+.import-field select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  font-size: 13px;
+  background: #f9fafb;
+}
+
+.import-field input:focus,
+.import-field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4);
+  background: #ffffff;
+}
+
+.import-file-label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.import-file-label input[type='file'] {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.hint-small {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* Panel resumen de resultados */
+.import-summary {
+  margin-top: 8px;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.import-summary h2 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+}
+
+.import-summary h3 {
+  margin-top: 14px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+/* Badges de resumen */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-right: 6px;
+}
+
+.badge-ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.badge-warn {
+  background: #fef9c3;
+  color: #b45309;
+}
+
+.badge-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Reutiliza tu .table-wrapper y .data-table existentes para el detalle */
