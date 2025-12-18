@@ -2,42 +2,31 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import TablePage from './pages/TablePage';
 import FormulasPage from './pages/FormulasPage';
 import ImportPage from './pages/ImportPage';
-import PdfPartidaPage from './pages/PdfPartidaPage';
+import ViewPdf from './pages/ViewPdf';
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 // ==== helpers de backend ====
-
 async function fetchPreProduccion(nv) {
   const params = new URLSearchParams();
   if (nv) params.set('nv', nv);
 
   const qs = params.toString() ? `?${params.toString()}` : '';
 
-  // 1) Siempre pegamos al SQL para sincronizar
   const syncRes = await fetch(`${API_BASE_URL}/api/pre-produccion${qs}`);
   if (!syncRes.ok) {
     throw new Error(`Error HTTP ${syncRes.status}`);
   }
   const syncData = await syncRes.json();
 
-  // 2) Intentar leer valores definitivos
   try {
     const valsRes = await fetch(`${API_BASE_URL}/api/pre-produccion-valores${qs}`);
-    if (!valsRes.ok) {
-      throw new Error(`Error HTTP ${valsRes.status}`);
-    }
+    if (!valsRes.ok) throw new Error(`Error HTTP ${valsRes.status}`);
     const valsData = await valsRes.json();
-
-    if (Array.isArray(valsData.rows)) {
-      return valsData;
-    }
+    if (Array.isArray(valsData.rows)) return valsData;
   } catch (e) {
-    console.warn(
-      'No se pudo leer pre-produccion-valores, uso SQL crudo:',
-      e?.message || e
-    );
+    console.warn('No se pudo leer pre-produccion-valores, uso SQL crudo:', e?.message || e);
   }
 
   return syncData;
@@ -45,9 +34,7 @@ async function fetchPreProduccion(nv) {
 
 async function fetchFormulasFromBackend() {
   const res = await fetch(`${API_BASE_URL}/api/formulas`);
-  if (!res.ok) {
-    throw new Error(`Error HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
   return res.json();
 }
 
@@ -65,8 +52,6 @@ async function saveFormulaToBackend(columnName, expression) {
   return res.json();
 }
 
-// ==== componente principal ====
-
 export default function App() {
   const [currentPage, setCurrentPage] = useState('tabla'); // 'tabla' | 'formulas' | 'import' | 'pdf'
 
@@ -80,7 +65,6 @@ export default function App() {
   const nvInputRef = useRef(null);
   const formulaInputRefs = useRef({});
 
-  // ===== carga inicial =====
   useEffect(() => {
     loadData();
     loadFormulas();
@@ -124,7 +108,6 @@ export default function App() {
 
   const hasData = rows && rows.length > 0;
 
-  // Columns robustas:
   const columns = useMemo(() => {
     const set = new Set();
 
@@ -134,13 +117,11 @@ export default function App() {
     }
 
     Object.keys(formulas || {}).forEach((k) => set.add(k));
-
     ['lado_mas_alto', 'calc_espada'].forEach((k) => set.add(k));
 
     return Array.from(set);
   }, [hasData, rows, formulas]);
 
-  // ===== compilar fórmulas =====
   const { compiledFormulas, formulaErrors } = useMemo(() => {
     const compiled = {};
     const errors = {};
@@ -173,15 +154,12 @@ export default function App() {
     return { compiledFormulas: compiled, formulaErrors: errors };
   }, [formulas]);
 
-  // ===== evaluar valor mostrado (con cadenas de fórmulas) =====
   function getDisplayValue(row, targetCol) {
     const cache = {};
     const visiting = new Set();
 
     function evalCol(col) {
-      if (Object.prototype.hasOwnProperty.call(cache, col)) {
-        return cache[col];
-      }
+      if (Object.prototype.hasOwnProperty.call(cache, col)) return cache[col];
 
       if (visiting.has(col)) {
         console.warn('Dependencia circular de fórmulas en la columna:', col);
@@ -198,7 +176,6 @@ export default function App() {
         return raw;
       }
 
-      // permitir referenciar columnas con fórmula aunque no existan en row
       const proxyRow = new Proxy(row, {
         get(target, prop, receiver) {
           if (
@@ -273,21 +250,16 @@ export default function App() {
       return;
     }
 
-    setFormulas((current) => ({
-      ...current,
-      [col]: draft,
-    }));
+    setFormulas((current) => ({ ...current, [col]: draft }));
 
     saveFormulaToBackend(col, draft).catch((err) => {
       console.error('Error guardando fórmula en backend:', err);
       window.alert(
-        'Error guardando la fórmula en la base de datos:\n' +
-          (err.message || String(err))
+        'Error guardando la fórmula en la base de datos:\n' + (err.message || String(err))
       );
     });
   }
 
-  // ===== guardar cambios de la tabla (ediciones manuales) =====
   async function saveTableChanges(changesByRow) {
     const updates = [];
 
@@ -299,34 +271,24 @@ export default function App() {
       if (rowKey.startsWith('ID:')) {
         const idPart = rowKey.slice(3);
         const row = rows.find((r) => String(r.ID) === idPart);
-        if (row && row.NV !== null && row.NV !== undefined) {
-          nvValue = row.NV;
-        }
+        if (row && row.NV !== null && row.NV !== undefined) nvValue = row.NV;
       } else {
         const parsed = parseInt(rowKey, 10);
-        if (!Number.isNaN(parsed)) {
-          nvValue = parsed;
-        }
+        if (!Number.isNaN(parsed)) nvValue = parsed;
       }
 
       if (nvValue === null || nvValue === undefined) return;
 
-      updates.push({
-        nv: nvValue,
-        changes: cols,
-      });
+      updates.push({ nv: nvValue, changes: cols });
     });
 
     if (!updates.length) return;
 
-    const res = await fetch(
-      `${API_BASE_URL}/api/pre-produccion-valores/bulk-update`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates }),
-      }
-    );
+    const res = await fetch(`${API_BASE_URL}/api/pre-produccion-valores/bulk-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates }),
+    });
 
     if (!res.ok) {
       const txt = await res.text();
@@ -334,7 +296,6 @@ export default function App() {
     }
   }
 
-  // ===== render =====
   return (
     <div className="page">
       <header className="header">
@@ -396,9 +357,7 @@ export default function App() {
           </form>
         )}
 
-        {formulaBackendError && (
-          <div className="error">⚠ {formulaBackendError}</div>
-        )}
+        {formulaBackendError && <div className="error">⚠ {formulaBackendError}</div>}
       </header>
 
       {error && <div className="error">⚠ {error}</div>}
@@ -415,7 +374,6 @@ export default function App() {
           handleFormulaKeyDown={handleFormulaKeyDown}
           getDisplayValue={getDisplayValue}
           onSaveChanges={saveTableChanges}
-          totalRows={rows?.length || 0}
         />
       )}
 
@@ -425,7 +383,7 @@ export default function App() {
 
       {currentPage === 'import' && <ImportPage rows={rows} columns={columns} />}
 
-      {currentPage === 'pdf' && <PdfPartidaPage />}
+      {currentPage === 'pdf' && <ViewPdf />}
     </div>
   );
 }

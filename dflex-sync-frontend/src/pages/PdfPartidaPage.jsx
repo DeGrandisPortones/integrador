@@ -6,7 +6,7 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 // =====================
-// Helpers de formato
+// Helpers
 // =====================
 function toStr(v) {
   if (v === null || v === undefined) return '';
@@ -41,16 +41,14 @@ function planchuelaDescripcionByPierna(piernaTipo) {
 function canioPuertaDescripcion(puertaAlto, puertaAncho) {
   const alto = toNum(puertaAlto);
   const ancho = toNum(puertaAncho);
-
   const total = alto * 2 + ancho * 2;
-
   if (total > 5880) return 'Separada';
   if (total < 5880) return 'Incompleta';
   return 'Completa';
 }
 
 // =====================
-// Cálculos para calc_espada y lado_mas_alto
+// Cálculos calc_espada / lado_mas_alto
 // =====================
 function calcLadoMasAltoFromParantesDescripcion(desc) {
   const s = toStr(desc);
@@ -68,7 +66,7 @@ function getLadoMasAlto(row) {
 }
 
 function calcCalcEspadaFromRow(row) {
-  const A = getLadoMasAlto(row); // lado_mas_alto
+  const A = getLadoMasAlto(row);
   const B = toNum(row.Largo_Parantes);
   const C = toNum(row.DATOS_Brazos);
 
@@ -95,7 +93,6 @@ function calcCalcEspadaFromRow(row) {
   return 0;
 }
 
-// Dibuja texto con “fit”
 function drawFittedText(page, font, text, x, y, opts = {}) {
   const {
     size = 8,
@@ -133,9 +130,6 @@ function drawFittedText(page, font, text, x, y, opts = {}) {
   page.drawText(finalText, { x, y, size: s, font, color });
 }
 
-// =====================
-// Coordenadas (plantilla)
-// =====================
 const POS = {
   header: {
     partidaX: 104.52,
@@ -144,7 +138,6 @@ const POS = {
     fechaY: 740.0,
     size: 12,
   },
-
   t1: {
     yRows: [653.06, 641.54, 630.02, 618.5, 606.98, 595.46],
     x: {
@@ -161,7 +154,6 @@ const POS = {
       puerta: 518.5,
     },
   },
-
   t2: {
     yRows: [459.62, 447.62, 435.62, 423.62, 411.62, 399.62],
     x: {
@@ -177,27 +169,23 @@ const POS = {
       descCanio: 518.5,
     },
   },
-
   t3: {
     yRows: [258.23, 246.23, 234.23, 222.23, 210.23, 198.23],
     x: {
       nv: 34.32,
       desc: 94.92,
       dintelAncho: 145.66,
-      dist: 230.76, // ESPADA / distancia e/huecos
+      dist: 230.76,
       cant: 275.04,
       espadas: 322.2,
       alto: 395.52,
-      chapa: 429.5, // REBAJE / CHAPA
+      chapa: 429.5,
       largo: 478.5,
       altox2: 518.5,
     },
   },
 };
 
-// =====================
-// Generación PDF
-// =====================
 async function generatePdfForPartida(partida, rows) {
   const base = import.meta.env.BASE_URL || '/';
   const templateUrl = `${base}pdf_modelo.pdf`;
@@ -214,9 +202,7 @@ async function generatePdfForPartida(partida, rows) {
   const isPdf =
     head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
   if (!isPdf) {
-    throw new Error(
-      `La plantilla ${templateUrl} no parece un PDF válido (no empieza con %PDF).`
-    );
+    throw new Error(`La plantilla ${templateUrl} no parece un PDF válido.`);
   }
 
   const templateDoc = await PDFDocument.load(templateBytes);
@@ -232,24 +218,15 @@ async function generatePdfForPartida(partida, rows) {
     const [page] = await outDoc.copyPages(templateDoc, [0]);
     outDoc.addPage(page);
 
-    // Header
-    drawFittedText(
-      page,
-      font,
-      toStr(partida),
-      POS.header.partidaX,
-      POS.header.partidaY,
-      { size: POS.header.size, maxWidth: 120 }
-    );
+    drawFittedText(page, font, toStr(partida), POS.header.partidaX, POS.header.partidaY, {
+      size: POS.header.size,
+      maxWidth: 120,
+    });
 
-    drawFittedText(
-      page,
-      font,
-      todayDDMMYY(),
-      POS.header.fechaX,
-      POS.header.fechaY,
-      { size: POS.header.size, maxWidth: 80 }
-    );
+    drawFittedText(page, font, todayDDMMYY(), POS.header.fechaX, POS.header.fechaY, {
+      size: POS.header.size,
+      maxWidth: 80,
+    });
 
     // Tabla 1
     chunk.forEach((r, idx) => {
@@ -257,31 +234,15 @@ async function generatePdfForPartida(partida, rows) {
       if (y === undefined) return;
 
       drawFittedText(page, font, r.NV, POS.t1.x.nv, y, { maxWidth: 40 });
-      drawFittedText(page, font, r.PARANTES_Descripcion, POS.t1.x.desc, y, {
-        maxWidth: 55,
-      });
-      drawFittedText(page, font, r.Largo_Parantes, POS.t1.x.largo, y, {
-        maxWidth: 40,
-      });
-      drawFittedText(page, font, r.DATOS_Hueco_Chico, POS.t1.x.hc, y, {
-        maxWidth: 35,
-      });
-      drawFittedText(page, font, r.DATOS_Hueco_Grande, POS.t1.x.hg, y, {
-        maxWidth: 35,
-      });
-      drawFittedText(page, font, r.Largo_Travesaños, POS.t1.x.trav, y, {
-        maxWidth: 55,
-      });
-      drawFittedText(page, font, r.Parantes_Internos, POS.t1.x.parInt, y, {
-        maxWidth: 55,
-      });
-      drawFittedText(page, font, r.Cantidad_Soportes, POS.t1.x.cant, y, {
-        maxWidth: 18,
-      });
+      drawFittedText(page, font, r.PARANTES_Descripcion, POS.t1.x.desc, y, { maxWidth: 55 });
+      drawFittedText(page, font, r.Largo_Parantes, POS.t1.x.largo, y, { maxWidth: 40 });
+      drawFittedText(page, font, r.DATOS_Hueco_Chico, POS.t1.x.hc, y, { maxWidth: 35 });
+      drawFittedText(page, font, r.DATOS_Hueco_Grande, POS.t1.x.hg, y, { maxWidth: 35 });
+      drawFittedText(page, font, r.Largo_Travesaños, POS.t1.x.trav, y, { maxWidth: 55 });
+      drawFittedText(page, font, r.Parantes_Internos, POS.t1.x.parInt, y, { maxWidth: 55 });
+      drawFittedText(page, font, r.Cantidad_Soportes, POS.t1.x.cant, y, { maxWidth: 18 });
 
-      drawFittedText(page, font, r.PARANTES_Distribucion, POS.t1.x.disp, y, {
-        maxWidth: 47,
-      });
+      drawFittedText(page, font, r.PARANTES_Distribucion, POS.t1.x.disp, y, { maxWidth: 47 });
       drawFittedText(page, font, r.PASADOR_Condicion, POS.t1.x.pas, y, {
         maxWidth: 36,
         size: 7,
@@ -307,39 +268,19 @@ async function generatePdfForPartida(partida, rows) {
       const descCanio = canioPuertaDescripcion(r.Puerta_Alto, r.Puerta_Ancho);
 
       drawFittedText(page, font, r.NV, POS.t2.x.nv, y, { maxWidth: 40 });
-      drawFittedText(page, font, descPlanchuela, POS.t2.x.desc, y, {
-        maxWidth: 45,
-      });
+      drawFittedText(page, font, descPlanchuela, POS.t2.x.desc, y, { maxWidth: 45 });
 
-      drawFittedText(page, font, r.Largo_Planchuelas, POS.t2.x.largoPl, y, {
-        maxWidth: 45,
-      });
-      drawFittedText(page, font, r.DATOS_Brazos, POS.t2.x.dist, y, {
-        maxWidth: 45,
-      });
+      drawFittedText(page, font, r.Largo_Planchuelas, POS.t2.x.largoPl, y, { maxWidth: 45 });
+      drawFittedText(page, font, r.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
 
-      drawFittedText(page, font, piernaTipo, POS.t2.x.pierna, y, {
-        maxWidth: 40,
-      });
+      drawFittedText(page, font, piernaTipo, POS.t2.x.pierna, y, { maxWidth: 40 });
       drawFittedText(page, font, sino, POS.t2.x.sino, y, { maxWidth: 35 });
 
-      drawFittedText(page, font, r.Puerta_Alto, POS.t2.x.puertaAlto, y, {
-        maxWidth: 50,
-      });
-      drawFittedText(page, font, r.Puerta_Ancho, POS.t2.x.ancho, y, {
-        maxWidth: 50,
-      });
+      drawFittedText(page, font, r.Puerta_Alto, POS.t2.x.puertaAlto, y, { maxWidth: 50 });
+      drawFittedText(page, font, r.Puerta_Ancho, POS.t2.x.ancho, y, { maxWidth: 50 });
 
-      drawFittedText(page, font, puertaPos, POS.t2.x.lado, y, {
-        maxWidth: 44,
-        size: 7,
-        minSize: 5,
-      });
-      drawFittedText(page, font, descCanio, POS.t2.x.descCanio, y, {
-        maxWidth: 42,
-        size: 7,
-        minSize: 5,
-      });
+      drawFittedText(page, font, puertaPos, POS.t2.x.lado, y, { maxWidth: 44, size: 7, minSize: 5 });
+      drawFittedText(page, font, descCanio, POS.t2.x.descCanio, y, { maxWidth: 42, size: 7, minSize: 5 });
     });
 
     // Tabla 3
@@ -353,76 +294,36 @@ async function generatePdfForPartida(partida, rows) {
       const motor = toStr(r.MOTOR_Condicion).toUpperCase();
       const espadas = motor.includes('AUTOM') ? 'AUTOMATICO' : '';
 
-      // ESPADA / distancia e/huecos = calc_espada (persistido o calculado)
       const hasStoredCalcEspada =
-        r.calc_espada !== undefined &&
-        r.calc_espada !== null &&
-        String(r.calc_espada).trim() !== '';
+        r.calc_espada !== undefined && r.calc_espada !== null && String(r.calc_espada).trim() !== '';
 
-      const espadaValue = hasStoredCalcEspada
-        ? toNum(r.calc_espada)
-        : calcCalcEspadaFromRow(r);
+      const espadaValue = hasStoredCalcEspada ? toNum(r.calc_espada) : calcCalcEspadaFromRow(r);
 
       const distEHuecos =
         Number.isFinite(espadaValue) && (espadaValue !== 0 || hasStoredCalcEspada)
           ? String(Math.round(espadaValue))
           : '';
 
-      // ✅ NUEVO: REBAJE / CHAPA según lado_mas_alto (>= 60 => 100mm, si no => 75mm)
       const ladoMasAlto = getLadoMasAlto(r);
       const chapa = ladoMasAlto >= 60 ? '100mm' : '75mm';
 
       drawFittedText(page, font, r.NV, POS.t3.x.nv, y, { maxWidth: 40 });
-      drawFittedText(
-        page,
-        font,
-        r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo,
-        POS.t3.x.desc,
-        y,
-        { maxWidth: 45 }
-      );
+      drawFittedText(page, font, r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo, POS.t3.x.desc, y, { maxWidth: 45 });
+      drawFittedText(page, font, r.DINTEL_Ancho, POS.t3.x.dintelAncho, y, { maxWidth: 55 });
 
-      drawFittedText(page, font, r.DINTEL_Ancho, POS.t3.x.dintelAncho, y, {
-        maxWidth: 55,
-      });
-
-      drawFittedText(page, font, distEHuecos, POS.t3.x.dist, y, {
-        maxWidth: 32,
-        size: 7,
-        minSize: 5,
-      });
+      drawFittedText(page, font, distEHuecos, POS.t3.x.dist, y, { maxWidth: 32, size: 7, minSize: 5 });
 
       drawFittedText(page, font, cant, POS.t3.x.cant, y, { maxWidth: 20 });
 
-      drawFittedText(page, font, espadas, POS.t3.x.espadas, y, {
-        maxWidth: 61,
-        size: 7,
-        minSize: 5,
-      });
+      drawFittedText(page, font, espadas, POS.t3.x.espadas, y, { maxWidth: 61, size: 7, minSize: 5 });
 
-      drawFittedText(page, font, r.Espesor_Revestimiento, POS.t3.x.alto, y, {
-        maxWidth: 28,
-      });
+      drawFittedText(page, font, r.Espesor_Revestimiento, POS.t3.x.alto, y, { maxWidth: 28 });
 
-      // REBAJE / CHAPA
-      drawFittedText(page, font, chapa, POS.t3.x.chapa, y, {
-        maxWidth: 44,
-        size: 7,
-        minSize: 5,
-      });
+      drawFittedText(page, font, chapa, POS.t3.x.chapa, y, { maxWidth: 44, size: 7, minSize: 5 });
 
-      drawFittedText(
-        page,
-        font,
-        r.Largo_Travesaños ?? r.Largo_Travesaño,
-        POS.t3.x.largo,
-        y,
-        { maxWidth: 36 }
-      );
+      drawFittedText(page, font, r.Largo_Travesaños ?? r.Largo_Travesaño, POS.t3.x.largo, y, { maxWidth: 36 });
 
-      drawFittedText(page, font, r.Largo_Parantes, POS.t3.x.altox2, y, {
-        maxWidth: 42,
-      });
+      drawFittedText(page, font, r.Largo_Parantes, POS.t3.x.altox2, y, { maxWidth: 42 });
     });
   }
 
@@ -433,16 +334,20 @@ async function generatePdfForPartida(partida, rows) {
 // =====================
 // Componente
 // =====================
-export default function PdfPartidaPage() {
-  const [partida, setPartida] = useState('');
+// Props:
+// - partida: string (si viene desde ViewPdf)
+// - embedded: boolean (si está embebido en ViewPdf, oculta input y solo muestra botón)
+export default function PdfPartidaPage({ partida: partidaProp = '', embedded = false }) {
+  const [partidaState, setPartidaState] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [count, setCount] = useState(null);
 
-  const canGenerate = useMemo(() => toStr(partida).length > 0, [partida]);
+  const partidaFinal = embedded ? toStr(partidaProp) : toStr(partidaState);
+  const canGenerate = useMemo(() => partidaFinal.length > 0, [partidaFinal]);
 
   async function handleGenerate() {
-    const p = toStr(partida);
+    const p = partidaFinal;
     if (!p) return;
 
     setLoading(true);
@@ -451,9 +356,7 @@ export default function PdfPartidaPage() {
 
     try {
       const res = await fetch(
-        `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(
-          p
-        )}`
+        `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`
       );
       if (!res.ok) {
         const txt = await res.text();
@@ -486,6 +389,35 @@ export default function PdfPartidaPage() {
     }
   }
 
+  // Embebido: solo botón
+  if (embedded) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={handleGenerate}
+          disabled={!canGenerate || loading}
+        >
+          {loading ? 'Generando...' : 'Generar PDF (Modelo General)'}
+        </button>
+
+        {count !== null && (
+          <div className="info" style={{ marginTop: 8 }}>
+            Portones encontrados: <b>{count}</b>
+          </div>
+        )}
+
+        {error && (
+          <div className="error" style={{ marginTop: 8 }}>
+            ⚠ {error}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Modo standalone (como lo tenías)
   return (
     <div className="import-panel">
       <h2>Generar PDF por PARTIDA</h2>
@@ -495,8 +427,8 @@ export default function PdfPartidaPage() {
           PARTIDA:&nbsp;
           <input
             type="text"
-            value={partida}
-            onChange={(e) => setPartida(e.target.value)}
+            value={partidaState}
+            onChange={(e) => setPartidaState(e.target.value)}
             placeholder="Ej: 507"
           />
         </label>
