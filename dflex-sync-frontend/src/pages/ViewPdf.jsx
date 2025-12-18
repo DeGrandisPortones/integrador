@@ -1,22 +1,91 @@
 // src/pages/ViewPdf.jsx
 import { useMemo, useState } from 'react';
-import PdfPartidaPage from './PdfPartidaPage';
-import PdfCortePlegadoPage from './PdfCortePlegadoPage';
+import { generatePdfDisenoLaser } from './pdfs/PdfDisenoLaser';
+import { generatePdfCortePlegado } from './pdfs/PdfCortePlegado';
+import { generatePdfTapajuntas } from './pdfs/PdfTapajuntas';
 
-// Página “menú” para PDFs: un solo input PARTIDA y botones para generar distintos modelos.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+
+function toStr(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).trim();
+}
+
 export default function ViewPdf() {
   const [partida, setPartida] = useState('');
-  const [activePdf, setActivePdf] = useState('partida'); // 'partida' | 'corte_plegado'
+  const [loading, setLoading] = useState(false);
+  const [loadingWhich, setLoadingWhich] = useState('');
+  const [error, setError] = useState('');
+  const [count, setCount] = useState(null);
 
-  const canGenerate = useMemo(() => String(partida || '').trim().length > 0, [partida]);
+  const canGenerate = useMemo(() => toStr(partida).length > 0, [partida]);
 
-  const cleanPartida = useMemo(() => String(partida || '').trim(), [partida]);
+  async function fetchRowsByPartida(p) {
+    const res = await fetch(`${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`);
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status}: ${txt}`);
+    }
+    const data = await res.json();
+    const rows = data.rows || [];
+    return rows;
+  }
+
+  async function handleGenerate(kind) {
+    const p = toStr(partida);
+    if (!p) return;
+
+    setLoading(true);
+    setLoadingWhich(kind);
+    setError('');
+    setCount(null);
+
+    try {
+      const rows = await fetchRowsByPartida(p);
+      setCount(rows.length);
+
+      if (!rows.length) {
+        throw new Error(`No hay portones con PARTIDA = ${p}`);
+      }
+
+      let pdfBlob;
+      let filename;
+
+      if (kind === 'diseno_laser') {
+        pdfBlob = await generatePdfDisenoLaser(p, rows);
+        filename = `Partida_${p}_DisenoLaser.pdf`;
+      } else if (kind === 'corte_plegado') {
+        pdfBlob = await generatePdfCortePlegado(p, rows);
+        filename = `Partida_${p}_CortePlegado.pdf`;
+      } else if (kind === 'tapajuntas') {
+        pdfBlob = await generatePdfTapajuntas(p, rows);
+        filename = `Partida_${p}_Tapajuntas.pdf`;
+      } else {
+        throw new Error('Tipo de PDF inválido.');
+      }
+
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || String(e));
+    } finally {
+      setLoading(false);
+      setLoadingWhich('');
+    }
+  }
 
   return (
     <div className="import-panel">
-      <h2>Generación de PDFs por PARTIDA</h2>
+      <h2>PDF por PARTIDA</h2>
 
-      <div className="field-row">
+      <div className="field-row" style={{ gap: 12, flexWrap: 'wrap' }}>
         <label>
           PARTIDA:&nbsp;
           <input
@@ -29,35 +98,44 @@ export default function ViewPdf() {
 
         <button
           type="button"
-          className={activePdf === 'partida' ? 'btn-secondary' : 'btn-secondary'}
-          onClick={() => setActivePdf('partida')}
-          disabled={!canGenerate}
-          title={!canGenerate ? 'Ingresá una PARTIDA primero' : ''}
+          className="btn-secondary"
+          onClick={() => handleGenerate('diseno_laser')}
+          disabled={!canGenerate || loading}
         >
-          PDF Diseño y Laser
+          {loading && loadingWhich === 'diseno_laser' ? 'Generando…' : 'PDF Diseño Laser'}
         </button>
 
         <button
           type="button"
-          className={activePdf === 'corte_plegado' ? 'btn-secondary' : 'btn-secondary'}
-          onClick={() => setActivePdf('corte_plegado')}
-          disabled={!canGenerate}
-          title={!canGenerate ? 'Ingresá una PARTIDA primero' : ''}
+          className="btn-secondary"
+          onClick={() => handleGenerate('corte_plegado')}
+          disabled={!canGenerate || loading}
         >
-          PDF Corte y Plegado
+          {loading && loadingWhich === 'corte_plegado' ? 'Generando…' : 'PDF Corte y Plegado'}
+        </button>
+
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => handleGenerate('tapajuntas')}
+          disabled={!canGenerate || loading}
+        >
+          {loading && loadingWhich === 'tapajuntas' ? 'Generando…' : 'PDF Tapajuntas'}
         </button>
       </div>
 
-      <p className="hint" style={{ marginTop: 8 }}>
-        Ingresá una PARTIDA y elegí qué PDF querés generar.
-      </p>
-
-      {/* Render del generador seleccionado.
-          Le pasamos la partida como prop para evitar pedirla de nuevo. */}
-      {activePdf === 'partida' && <PdfPartidaPage partida={cleanPartida} embedded />}
-      {activePdf === 'corte_plegado' && (
-        <PdfCortePlegadoPage partida={cleanPartida} embedded />
+      {count !== null && (
+        <div className="info">
+          Portones encontrados: <b>{count}</b>
+        </div>
       )}
+
+      {error && <div className="error">⚠ {error}</div>}
+
+      <p className="hint">
+        Plantillas en <code>/public</code>:&nbsp;
+        <code>pdf_modelo_diseño_laser.pdf</code>, <code>pdf_modelo_corte_plegado.pdf</code>, <code>pdf_modelo_tapajuntas.pdf</code>.
+      </p>
     </div>
   );
 }

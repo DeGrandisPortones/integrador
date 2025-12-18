@@ -1,10 +1,12 @@
-// src/pages/PdfCortePlegadoPage.jsx
+// src/pages/pdfs/PdfCortePlegado.jsx
 import { useMemo, useState } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
+// =====================
+// Helpers
+// =====================
 function toStr(v) {
   if (v === null || v === undefined) return '';
   return String(v).trim();
@@ -18,6 +20,13 @@ function toNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Heurística mm: si < 500 asumimos cm y *10
+function toMm(v) {
+  const n = toNum(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n < 500 ? n * 10 : n;
+}
+
 function todayDDMMYY() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -25,32 +34,33 @@ function todayDDMMYY() {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy}`;
 }
 
-function normalizeTipoPierna(tipo) {
-  const t = toStr(tipo).toUpperCase();
-  return t
-    .replaceAll('Á', 'A')
-    .replaceAll('É', 'E')
-    .replaceAll('Í', 'I')
-    .replaceAll('Ó', 'O')
-    .replaceAll('Ú', 'U')
-    .replaceAll('Ü', 'U')
-    .replaceAll('Ñ', 'N');
+function normTipoPierna(v) {
+  const s = toStr(v).toUpperCase();
+  if (s.includes('ANCHA')) return 'ANCHA';
+  if (s.includes('ANGOST')) return 'ANGOSTA';
+  if (s.includes('COM')) return 'COMUN';
+  return s || '';
 }
 
-function getPiernaAnchoYTapa(tipoPiernaRaw) {
-  const t = normalizeTipoPierna(tipoPiernaRaw);
-  if (t.includes('ANCHA')) return { piernaAncho: '77', tapaAncho: '16' };
-  if (t.includes('ANGOST')) return { piernaAncho: '69', tapaAncho: '8' };
-  return { piernaAncho: '72', tapaAncho: '11' }; // COMUN default
+function piernaAnchoByTipo(tipo) {
+  const t = normTipoPierna(tipo);
+  if (t === 'COMUN') return '72';
+  if (t === 'ANGOSTA') return '69';
+  if (t === 'ANCHA') return '77';
+  return '';
 }
 
+function tapaAnchoByTipo(tipo) {
+  const t = normTipoPierna(tipo);
+  if (t === 'COMUN') return '11';
+  if (t === 'ANGOSTA') return '8';
+  if (t === 'ANCHA') return '16';
+  return '';
+}
+
+// Dibuja texto con fit simple
 function drawFittedText(page, font, text, x, y, opts = {}) {
-  const {
-    size = 9,
-    maxWidth = null,
-    minSize = 6,
-    color = rgb(0, 0, 0),
-  } = opts;
+  const { size = 9, maxWidth = null, minSize = 7, color = rgb(0, 0, 0) } = opts;
 
   const t = toStr(text);
   if (!t) return;
@@ -69,10 +79,7 @@ function drawFittedText(page, font, text, x, y, opts = {}) {
 
   let finalText = t;
   if (font.widthOfTextAtSize(finalText, s) > maxWidth) {
-    while (
-      finalText.length > 0 &&
-      font.widthOfTextAtSize(finalText + '…', s) > maxWidth
-    ) {
+    while (finalText.length > 0 && font.widthOfTextAtSize(finalText + '…', s) > maxWidth) {
       finalText = finalText.slice(0, -1);
     }
     finalText = finalText ? finalText + '…' : '';
@@ -81,21 +88,21 @@ function drawFittedText(page, font, text, x, y, opts = {}) {
   page.drawText(finalText, { x, y, size: s, font, color });
 }
 
-// Coordenadas del template CORTE-PLEGADO
-const FIRST_ROW_Y = 662.64;
-const ROW_STEP = 14.52;
-const ROWS_PER_PAGE = 12;
-
+// =====================
+// POS (A4)
+// =====================
 const POS = {
   header: {
     partidaX: 138.96,
-    partidaY: 730.44,
+    partidaY: 728.44,
     fechaX: 513.12,
-    fechaY: 731.4,
-    size: 10,
+    fechaY: 729.4,
+    size: 12,
   },
   table: {
-    yRows: Array.from({ length: ROWS_PER_PAGE }, (_, i) => FIRST_ROW_Y - i * ROW_STEP),
+    firstY: 660.61,
+    stepY: -14.52,
+    minY: 65,
     x: {
       nv: 34.56,
       pieza: 77.4,
@@ -103,11 +110,31 @@ const POS = {
       largo: 190.68,
       piernaAncho: 231.36,
       tapaAncho: 270.24,
+      obs: 305.0,
+    },
+    maxWidth: {
+      nv: 40,
+      pieza: 55,
+      desc: 70,
+      largo: 40,
+      piernaAncho: 35,
+      tapaAncho: 35,
+      obs: 240,
     },
   },
 };
 
-async function generatePdfForPartida(partida, rows) {
+function buildPageSize(firstY, stepY, minY) {
+  const step = Math.abs(stepY);
+  if (!step) return 1;
+  const count = Math.floor((firstY - minY) / step) + 1;
+  return Math.max(1, count);
+}
+
+// =====================
+// PDF builder (EXPORTADO)
+// =====================
+export async function generatePdfCortePlegado(partida, rows) {
   const base = import.meta.env.BASE_URL || '/';
   const templateUrl = `${base}pdf_modelo_corte_plegado.pdf`;
 
@@ -119,19 +146,13 @@ async function generatePdfForPartida(partida, rows) {
   }
 
   const templateBytes = await templateRes.arrayBuffer();
-  const head = new Uint8Array(templateBytes.slice(0, 4));
-  const isPdf =
-    head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
-  if (!isPdf) {
-    throw new Error(`La plantilla ${templateUrl} no parece un PDF válido.`);
-  }
-
   const templateDoc = await PDFDocument.load(templateBytes);
+
   const outDoc = await PDFDocument.create();
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
 
   const items = [...rows].sort((a, b) => toNum(a.NV) - toNum(b.NV));
-  const pageSize = POS.table.yRows.length;
+  const pageSize = buildPageSize(POS.table.firstY, POS.table.stepY, POS.table.minY);
 
   for (let i = 0; i < items.length; i += pageSize) {
     const chunk = items.slice(i, i + pageSize);
@@ -142,33 +163,38 @@ async function generatePdfForPartida(partida, rows) {
     // Header
     drawFittedText(page, font, toStr(partida), POS.header.partidaX, POS.header.partidaY, {
       size: POS.header.size,
-      maxWidth: 60,
+      maxWidth: 160,
     });
-
     drawFittedText(page, font, todayDDMMYY(), POS.header.fechaX, POS.header.fechaY, {
       size: POS.header.size,
-      maxWidth: 90,
+      maxWidth: 110,
     });
 
-    // Tabla
+    // Rows
     chunk.forEach((r, idx) => {
-      const y = POS.table.yRows[idx];
-      if (y === undefined) return;
+      const y = POS.table.firstY + idx * POS.table.stepY;
+      if (y < POS.table.minY) return;
 
-      const nv = toStr(r.NV);
-      const pieza = 'PIERNA';
-      const tipoPierna = toStr(r.PIERNAS_Tipo);
-      const desc = normalizeTipoPierna(tipoPierna);
-      const largo = toStr(r.PIERNAS_Altura);
+      const tipo = r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo;
+      const largoMm = Math.round(toMm(r.PIERNAS_Altura));
+      const piernaAncho = piernaAnchoByTipo(tipo);
+      const tapaAncho = tapaAnchoByTipo(tipo);
 
-      const { piernaAncho, tapaAncho } = getPiernaAnchoYTapa(tipoPierna);
+      drawFittedText(page, font, r.NV, POS.table.x.nv, y, { maxWidth: POS.table.maxWidth.nv });
+      drawFittedText(page, font, 'PIERNA', POS.table.x.pieza, y, { maxWidth: POS.table.maxWidth.pieza });
+      drawFittedText(page, font, tipo, POS.table.x.desc, y, { maxWidth: POS.table.maxWidth.desc });
 
-      drawFittedText(page, font, nv, POS.table.x.nv, y, { maxWidth: 55, size: 10 });
-      drawFittedText(page, font, pieza, POS.table.x.pieza, y, { maxWidth: 60, size: 10 });
-      drawFittedText(page, font, desc, POS.table.x.desc, y, { maxWidth: 80, size: 10 });
-      drawFittedText(page, font, largo, POS.table.x.largo, y, { maxWidth: 45, size: 10 });
-      drawFittedText(page, font, piernaAncho, POS.table.x.piernaAncho, y, { maxWidth: 30, size: 10 });
-      drawFittedText(page, font, tapaAncho, POS.table.x.tapaAncho, y, { maxWidth: 30, size: 10 });
+      drawFittedText(page, font, largoMm ? String(largoMm) : '', POS.table.x.largo, y, {
+        maxWidth: POS.table.maxWidth.largo,
+      });
+
+      drawFittedText(page, font, piernaAncho, POS.table.x.piernaAncho, y, {
+        maxWidth: POS.table.maxWidth.piernaAncho,
+      });
+
+      drawFittedText(page, font, tapaAncho, POS.table.x.tapaAncho, y, {
+        maxWidth: POS.table.maxWidth.tapaAncho,
+      });
     });
   }
 
@@ -176,17 +202,19 @@ async function generatePdfForPartida(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-export default function PdfCortePlegadoPage({ partida: partidaProp = '', embedded = false }) {
-  const [partidaState, setPartidaState] = useState('');
+// =====================
+// Component
+// =====================
+export default function PdfCortePlegado() {
+  const [partida, setPartida] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [count, setCount] = useState(null);
 
-  const partidaFinal = embedded ? toStr(partidaProp) : toStr(partidaState);
-  const canGenerate = useMemo(() => partidaFinal.length > 0, [partidaFinal]);
+  const canGenerate = useMemo(() => toStr(partida).length > 0, [partida]);
 
   async function handleGenerate() {
-    const p = partidaFinal;
+    const p = toStr(partida);
     if (!p) return;
 
     setLoading(true);
@@ -206,16 +234,14 @@ export default function PdfCortePlegadoPage({ partida: partidaProp = '', embedde
       const rows = data.rows || [];
       setCount(rows.length);
 
-      if (!rows.length) {
-        throw new Error(`No hay portones con PARTIDA = ${p}`);
-      }
+      if (!rows.length) throw new Error(`No hay portones con PARTIDA = ${p}`);
 
-      const pdfBlob = await generatePdfForPartida(p, rows);
+      const pdfBlob = await generatePdfCortePlegado(p, rows);
 
       const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Corte_Plegado_Partida_${p}.pdf`;
+      a.download = `Partida_${p}_CortePlegado.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -228,47 +254,21 @@ export default function PdfCortePlegadoPage({ partida: partidaProp = '', embedde
     }
   }
 
-  if (embedded) {
-    return (
-      <div style={{ marginTop: 12 }}>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={handleGenerate}
-          disabled={!canGenerate || loading}
-        >
-          {loading ? 'Generando...' : 'Generar PDF (Corte y Plegado)'}
-        </button>
-
-        {count !== null && (
-          <div className="info" style={{ marginTop: 8 }}>
-            Portones encontrados: <b>{count}</b>
-          </div>
-        )}
-
-        {error && (
-          <div className="error" style={{ marginTop: 8 }}>
-            ⚠ {error}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="import-panel">
-      <h2>PDF Corte y Plegado por PARTIDA</h2>
+      <h2>PDF Corte y Plegado</h2>
 
       <div className="field-row">
         <label>
           PARTIDA:&nbsp;
           <input
             type="text"
-            value={partidaState}
-            onChange={(e) => setPartidaState(e.target.value)}
+            value={partida}
+            onChange={(e) => setPartida(e.target.value)}
             placeholder="Ej: 507"
           />
         </label>
+
         <button
           type="button"
           className="btn-secondary"
@@ -280,12 +280,16 @@ export default function PdfCortePlegadoPage({ partida: partidaProp = '', embedde
       </div>
 
       {count !== null && (
-        <div className="info">
+        <div className="info" style={{ marginTop: 8 }}>
           Portones encontrados: <b>{count}</b>
         </div>
       )}
 
-      {error && <div className="error">⚠ {error}</div>}
+      {error && (
+        <div className="error" style={{ marginTop: 8 }}>
+          ⚠ {error}
+        </div>
+      )}
 
       <p className="hint">
         Usa la plantilla <code>/public/pdf_modelo_corte_plegado.pdf</code>.

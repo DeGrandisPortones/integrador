@@ -1,0 +1,233 @@
+// src/pages/pdfs/PdfTapajuntas.jsx
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+
+// =====================
+// AJUSTES FINOS
+// =====================
+// Altura (Y): negativo = baja el texto; positivo = sube el texto
+const ROW_Y_OFFSET = -9;
+
+// Fecha: positivo = mueve a la derecha; negativo = a la izquierda
+const FECHA_X_OFFSET = 20;
+
+// =====================
+// Helpers
+// =====================
+function toStr(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).trim();
+}
+
+function toNum(v) {
+  if (v === null || v === undefined) return 0;
+  const s = String(v).replace(',', '.');
+  const m = s.match(/-?\d+(\.\d+)?/);
+  const n = m ? Number(m[0]) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function todayDDMMYY() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy}`;
+}
+
+// Heurística: si viene en cm (<500), pasamos a mm (*10). Si ya es mm, queda igual.
+function toMM(n) {
+  const v = toNum(n);
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  return v < 500 ? v * 10 : v;
+}
+
+function getParanteDesc(row) {
+  return (
+    toStr(row.PARANTE_Descripcion) ||
+    toStr(row.PARANTES_Descripcion) ||
+    toStr(row.Parante_Descripcion) ||
+    toStr(row.Parantes_Descripcion)
+  );
+}
+
+function getPiernasAltura(row) {
+  return (
+    row.PIERNAS_Altura ??
+    row.Piernas_Altura ??
+    row.PIERNA_Altura ??
+    row.Pierna_Altura ??
+    row.PIERNAS_ALTURA ??
+    row.piernas_altura
+  );
+}
+
+function calcDescripcionArticulo(row) {
+  const raw = getParanteDesc(row);
+  const norm = raw.replace(/\s+/g, '').toUpperCase(); // "40x50" -> "40X50"
+  if (norm === '40X50' || norm === '50X50' || norm === '30X50') return 'PLEGADO1';
+  return 'PLEGADO2';
+}
+
+function calcLargoTotalMM(row) {
+  // Largo total = (PIERNAS_Altura/2) + 75  (en mm)
+  const altura = toMM(getPiernasAltura(row));
+  if (!altura) return '';
+  const val = altura / 2 + 75;
+  return Number.isFinite(val) ? String(Math.round(val)) : '';
+}
+
+// Dibuja texto con “fit” simple
+function drawFittedText(page, font, text, x, y, opts = {}) {
+  const {
+    size = 9,
+    maxWidth = null,
+    minSize = 7,
+    color = rgb(0, 0, 0),
+  } = opts;
+
+  const t = toStr(text);
+  if (!t) return;
+
+  if (!maxWidth) {
+    page.drawText(t, { x, y, size, font, color });
+    return;
+  }
+
+  let s = size;
+  while (s >= minSize) {
+    const w = font.widthOfTextAtSize(t, s);
+    if (w <= maxWidth) break;
+    s -= 0.5;
+  }
+
+  let finalText = t;
+  if (font.widthOfTextAtSize(finalText, s) > maxWidth) {
+    while (
+      finalText.length > 0 &&
+      font.widthOfTextAtSize(finalText + '…', s) > maxWidth
+    ) {
+      finalText = finalText.slice(0, -1);
+    }
+    finalText = finalText ? finalText + '…' : '';
+  }
+
+  page.drawText(finalText, { x, y, size: s, font, color });
+}
+
+// =====================
+// Coordenadas (Tapajuntas)
+// =====================
+const POS = {
+  header: {
+    partidaX: 122.4,
+    partidaY: 732.5,
+    fechaX: 498.5 + FECHA_X_OFFSET, // ✅ mover fecha a la derecha
+    fechaY: 729.5,
+    size: 12,
+  },
+
+  table: {
+    yRows: [
+      674.375, 659.875, 645.375, 630.875, 616.375,
+      601.875, 587.25, 572.75, 558.25, 543.75,
+      529.25, 514.75, 500.25, 485.75, 471.25,
+    ].map((y) => y + ROW_Y_OFFSET), // ✅ ajuste fino de altura
+    x: {
+      nv: 46,
+      desc: 120,
+      largo: 186,
+      obs: 245,
+    },
+    maxWidth: {
+      nv: 55,
+      desc: 60,
+      largo: 45,
+      obs: 320,
+    },
+  },
+};
+
+// =====================
+// Export público
+// =====================
+export async function generatePdfTapajuntas(partida, rows) {
+  const base = import.meta.env.BASE_URL || '/';
+  const templateUrl = `${base}pdf_modelo_tapajuntas.pdf`;
+
+  const templateRes = await fetch(templateUrl);
+  if (!templateRes.ok) {
+    throw new Error(
+      `No se pudo cargar la plantilla ${templateUrl} (status ${templateRes.status}). Revisá /public/pdf_modelo_tapajuntas.pdf`
+    );
+  }
+
+  const templateBytes = await templateRes.arrayBuffer();
+  const head = new Uint8Array(templateBytes.slice(0, 4));
+  const isPdf =
+    head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
+  if (!isPdf) {
+    throw new Error(`La plantilla ${templateUrl} no parece un PDF válido (no empieza con %PDF).`);
+  }
+
+  const templateDoc = await PDFDocument.load(templateBytes);
+  const outDoc = await PDFDocument.create();
+  const font = await outDoc.embedFont(StandardFonts.Helvetica);
+
+  const items = [...(rows || [])].sort((a, b) => toNum(a.NV) - toNum(b.NV));
+  const pageSize = POS.table.yRows.length;
+
+  for (let i = 0; i < items.length; i += pageSize) {
+    const chunk = items.slice(i, i + pageSize);
+
+    const [page] = await outDoc.copyPages(templateDoc, [0]);
+    outDoc.addPage(page);
+
+    // Header
+    drawFittedText(page, font, toStr(partida), POS.header.partidaX, POS.header.partidaY, {
+      size: POS.header.size,
+      maxWidth: 120,
+    });
+
+    drawFittedText(page, font, todayDDMMYY(), POS.header.fechaX, POS.header.fechaY, {
+      size: POS.header.size,
+      maxWidth: 90,
+    });
+
+    // Tabla
+    chunk.forEach((r, idx) => {
+      const y = POS.table.yRows[idx];
+      if (y === undefined) return;
+
+      const nv = toStr(r.NV);
+      const descArticulo = calcDescripcionArticulo(r);
+      const largoTotal = calcLargoTotalMM(r);
+      const obs = '';
+
+      drawFittedText(page, font, nv, POS.table.x.nv, y, {
+        maxWidth: POS.table.maxWidth.nv,
+        size: 9,
+        minSize: 7,
+      });
+
+      drawFittedText(page, font, descArticulo, POS.table.x.desc, y, {
+        maxWidth: POS.table.maxWidth.desc,
+        size: 9,
+        minSize: 7,
+      });
+
+      drawFittedText(page, font, largoTotal, POS.table.x.largo, y, {
+        maxWidth: POS.table.maxWidth.largo,
+        size: 9,
+        minSize: 7,
+      });
+
+      drawFittedText(page, font, obs, POS.table.x.obs, y, {
+        maxWidth: POS.table.maxWidth.obs,
+        size: 9,
+        minSize: 7,
+      });
+    });
+  }
+
+  const bytes = await outDoc.save();
+  return new Blob([bytes], { type: 'application/pdf' });
+}

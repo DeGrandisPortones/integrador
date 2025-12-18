@@ -4,8 +4,11 @@ import FormulasPage from './pages/FormulasPage';
 import ImportPage from './pages/ImportPage';
 import ViewPdf from './pages/ViewPdf';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+
+// ===== localStorage keys =====
+const LS_CURRENT_PAGE = 'dflex.currentPage';
+const LS_VISIBLE_COLUMNS = 'dflex.visibleColumns.v1';
 
 // ==== helpers de backend ====
 async function fetchPreProduccion(nv) {
@@ -53,18 +56,53 @@ async function saveFormulaToBackend(columnName, expression) {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('tabla'); // 'tabla' | 'formulas' | 'import' | 'pdf'
+  // ===== current page (persistido) =====
+  const [currentPage, setCurrentPage] = useState(() => {
+    const saved = localStorage.getItem(LS_CURRENT_PAGE);
+    return saved || 'tabla';
+  });
 
+  // ===== data =====
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // ===== formulas =====
   const [formulas, setFormulas] = useState({});
   const [formulaBackendError, setFormulaBackendError] = useState('');
+
+  // ===== visible columns (persistido) =====
+  // null => “no configurado todavía”, por defecto mostramos todo.
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const raw = localStorage.getItem(LS_VISIBLE_COLUMNS);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
 
   const nvInputRef = useRef(null);
   const formulaInputRefs = useRef({});
 
+  // Persist current page
+  useEffect(() => {
+    localStorage.setItem(LS_CURRENT_PAGE, currentPage);
+  }, [currentPage]);
+
+  // Persist visible columns
+  useEffect(() => {
+    if (!visibleColumns) return;
+    try {
+      localStorage.setItem(LS_VISIBLE_COLUMNS, JSON.stringify(visibleColumns));
+    } catch (e) {
+      console.warn('No se pudo guardar visibleColumns en localStorage:', e);
+    }
+  }, [visibleColumns]);
+
+  // ===== carga inicial =====
   useEffect(() => {
     loadData();
     loadFormulas();
@@ -108,7 +146,8 @@ export default function App() {
 
   const hasData = rows && rows.length > 0;
 
-  const columns = useMemo(() => {
+  // Columns robustas (unión de keys + formulas + forzadas)
+  const allColumns = useMemo(() => {
     const set = new Set();
 
     if (hasData) {
@@ -122,6 +161,21 @@ export default function App() {
     return Array.from(set);
   }, [hasData, rows, formulas]);
 
+  // Columnas que realmente mostramos (según config guardada)
+  const columnsToShow = useMemo(() => {
+    if (!visibleColumns || !Array.isArray(visibleColumns) || !visibleColumns.length) {
+      return allColumns;
+    }
+
+    // Mantener solo las que existen
+    const allowed = new Set(allColumns);
+    const filtered = visibleColumns.filter((c) => allowed.has(c));
+
+    // Si el user guardó algo inválido y queda vacío, fallback
+    return filtered.length ? filtered : allColumns;
+  }, [allColumns, visibleColumns]);
+
+  // ===== compilar fórmulas =====
   const { compiledFormulas, formulaErrors } = useMemo(() => {
     const compiled = {};
     const errors = {};
@@ -154,6 +208,7 @@ export default function App() {
     return { compiledFormulas: compiled, formulaErrors: errors };
   }, [formulas]);
 
+  // ===== evaluar valor mostrado =====
   function getDisplayValue(row, targetCol) {
     const cache = {};
     const visiting = new Set();
@@ -260,6 +315,22 @@ export default function App() {
     });
   }
 
+  // Hook para que TablePage te avise cuando el usuario cambie el set de columnas visibles
+  function handleChangeVisibleColumns(nextCols) {
+    if (!Array.isArray(nextCols)) return;
+    setVisibleColumns(nextCols);
+  }
+
+  // Permite resetear “ver todo”
+  function handleResetVisibleColumns() {
+    setVisibleColumns(null);
+    try {
+      localStorage.removeItem(LS_VISIBLE_COLUMNS);
+    } catch (e) {
+      console.warn('No se pudo borrar visibleColumns de localStorage:', e);
+    }
+  }
+
   async function saveTableChanges(changesByRow) {
     const updates = [];
 
@@ -323,7 +394,7 @@ export default function App() {
             className={currentPage === 'pdf' ? 'nav-btn active' : 'nav-btn'}
             onClick={() => setCurrentPage('pdf')}
           >
-            PDF por Partida
+            PDFs por Partida
           </button>
 
           <button
@@ -354,6 +425,16 @@ export default function App() {
             >
               Limpiar
             </button>
+
+            {/* Opcional: botón para resetear config columnas */}
+            <button
+              type="button"
+              onClick={handleResetVisibleColumns}
+              disabled={loading}
+              title="Vuelve a mostrar todas las columnas"
+            >
+              Ver todas las columnas
+            </button>
           </form>
         )}
 
@@ -365,7 +446,12 @@ export default function App() {
       {currentPage === 'tabla' && (
         <TablePage
           rows={rows}
-          columns={columns}
+          // 👇 acá ya le pasamos las columnas filtradas
+          columns={columnsToShow}
+          // 👇 y también todas (para armar el selector en TablePage)
+          allColumns={allColumns}
+          visibleColumns={visibleColumns}
+          onChangeVisibleColumns={handleChangeVisibleColumns}
           hasData={hasData}
           loading={loading}
           formulas={formulas}
@@ -378,10 +464,18 @@ export default function App() {
       )}
 
       {currentPage === 'formulas' && (
-        <FormulasPage hasData={hasData} columns={columns} formulas={formulas} />
+        <FormulasPage
+          hasData={hasData}
+          // si querés que FormulasPage respete la misma selección:
+          columns={columnsToShow}
+          allColumns={allColumns}
+          visibleColumns={visibleColumns}
+          onChangeVisibleColumns={handleChangeVisibleColumns}
+          formulas={formulas}
+        />
       )}
 
-      {currentPage === 'import' && <ImportPage rows={rows} columns={columns} />}
+      {currentPage === 'import' && <ImportPage rows={rows} columns={allColumns} />}
 
       {currentPage === 'pdf' && <ViewPdf />}
     </div>
