@@ -163,7 +163,6 @@ function getPiernasAlturaMM(row) {
       row.PIERNAS_ALTURA ??
       row.piernas_altura
   );
-  return base ? base * 100 : 0;
 }
 
 function calc244(row) {
