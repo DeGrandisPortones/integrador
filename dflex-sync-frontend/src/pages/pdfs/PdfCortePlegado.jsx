@@ -1,5 +1,4 @@
 // src/pages/pdfs/PdfCortePlegado.jsx
-import { useMemo, useState } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -132,7 +131,7 @@ function buildPageSize(firstY, stepY, minY) {
 }
 
 // =====================
-// Fetch: SIEMPRE desde pre-produccion-valores
+// Fetch SIEMPRE desde pre-produccion-valores
 // =====================
 async function fetchValoresByPartida(partida) {
   const p = toStr(partida);
@@ -140,6 +139,7 @@ async function fetchValoresByPartida(partida) {
 
   const url = `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`;
   const res = await fetch(url);
+
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
@@ -151,17 +151,13 @@ async function fetchValoresByPartida(partida) {
 
 // =====================
 // PDF builder (EXPORTADO)
-//
-// ✅ Ahora soporta 2 usos:
-//   - generatePdfCortePlegado(partida)            -> fetchea rows solo
-//   - generatePdfCortePlegado(partida, rows)      -> usa rows provistos
 // =====================
 export async function generatePdfCortePlegado(partida, rows) {
   const p = toStr(partida);
   if (!p) throw new Error('Partida vacía');
 
   const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p);
-  if (!safeRows.length) throw new Error(`No hay portones con PARTIDA = ${p}`);
+  if (!safeRows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
 
   const base = import.meta.env.BASE_URL || '/';
   const templateUrl = `${base}pdf_modelo_corte_plegado.pdf`;
@@ -203,8 +199,8 @@ export async function generatePdfCortePlegado(partida, rows) {
       const y = POS.table.firstY + idx * POS.table.stepY;
       if (y < POS.table.minY) return;
 
-      const tipo = r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo ?? '';
-      const largoMm = Math.round(toMm(r.PIERNAS_Altura ?? r.Piernas_Altura ?? r.PIERNA_Altura ?? r.Pierna_Altura));
+      const tipo = r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo;
+      const largoMm = Math.round(toMm(r.PIERNAS_Altura ?? r.Piernas_Altura ?? r.Pierna_Altura ?? r.piernas_altura));
       const piernaAncho = piernaAnchoByTipo(tipo);
       const tapaAncho = tapaAnchoByTipo(tipo);
 
@@ -230,89 +226,11 @@ export async function generatePdfCortePlegado(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-// =====================
-// Component (opcional)
-// =====================
-export default function PdfCortePlegado() {
-  const [partida, setPartida] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [count, setCount] = useState(null);
-
-  const canGenerate = useMemo(() => toStr(partida).length > 0, [partida]);
-
-  async function handleGenerate() {
-    const p = toStr(partida);
-    if (!p) return;
-
-    setLoading(true);
-    setError('');
-    setCount(null);
-
-    try {
-      const rows = await fetchValoresByPartida(p);
-      setCount(rows.length);
-
-      if (!rows.length) throw new Error(`No hay portones con PARTIDA = ${p}`);
-
-      const pdfBlob = await generatePdfCortePlegado(p, rows);
-
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Partida_${p}_CortePlegado.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      setError(e?.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="import-panel">
-      <h2>PDF Corte y Plegado</h2>
-
-      <div className="field-row">
-        <label>
-          PARTIDA:&nbsp;
-          <input
-            type="text"
-            value={partida}
-            onChange={(e) => setPartida(e.target.value)}
-            placeholder="Ej: 507"
-          />
-        </label>
-
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={handleGenerate}
-          disabled={!canGenerate || loading}
-        >
-          {loading ? 'Generando...' : 'Generar PDF'}
-        </button>
-      </div>
-
-      {count !== null && (
-        <div className="info" style={{ marginTop: 8 }}>
-          Portones encontrados: <b>{count}</b>
-        </div>
-      )}
-
-      {error && (
-        <div className="error" style={{ marginTop: 8 }}>
-          ⚠ {error}
-        </div>
-      )}
-
-      <p className="hint">
-        Usa la plantilla <code>/public/pdf_modelo_corte_plegado.pdf</code>.
-      </p>
-    </div>
-  );
+export async function generatePdfCortePlegadoByPartida(partida) {
+  return generatePdfCortePlegado(partida);
 }
+
+export default {
+  generatePdfCortePlegado,
+  generatePdfCortePlegadoByPartida,
+};

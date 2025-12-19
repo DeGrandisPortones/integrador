@@ -1,6 +1,8 @@
 // src/pages/pdfs/PdfTapajuntas.jsx
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+
 // =====================
 // AJUSTES FINOS
 // =====================
@@ -49,7 +51,7 @@ function getParanteDesc(row) {
   );
 }
 
-function getPiernasAltura(row) {
+function getPiernasAlturaRaw(row) {
   return (
     row.PIERNAS_Altura ??
     row.Piernas_Altura ??
@@ -69,7 +71,7 @@ function calcDescripcionArticulo(row) {
 
 function calcLargoTotalMM(row) {
   // Largo total = (PIERNAS_Altura/2) + 75  (en mm)
-  const altura = toMM(getPiernasAltura(row));
+  const altura = toMM(getPiernasAlturaRaw(row));
   if (!altura) return '';
   const val = altura / 2 + 75;
   return Number.isFinite(val) ? String(Math.round(val)) : '';
@@ -77,12 +79,7 @@ function calcLargoTotalMM(row) {
 
 // Dibuja texto con “fit” simple
 function drawFittedText(page, font, text, x, y, opts = {}) {
-  const {
-    size = 9,
-    maxWidth = null,
-    minSize = 7,
-    color = rgb(0, 0, 0),
-  } = opts;
+  const { size = 9, maxWidth = null, minSize = 7, color = rgb(0, 0, 0) } = opts;
 
   const t = toStr(text);
   if (!t) return;
@@ -101,10 +98,7 @@ function drawFittedText(page, font, text, x, y, opts = {}) {
 
   let finalText = t;
   if (font.widthOfTextAtSize(finalText, s) > maxWidth) {
-    while (
-      finalText.length > 0 &&
-      font.widthOfTextAtSize(finalText + '…', s) > maxWidth
-    ) {
+    while (finalText.length > 0 && font.widthOfTextAtSize(finalText + '…', s) > maxWidth) {
       finalText = finalText.slice(0, -1);
     }
     finalText = finalText ? finalText + '…' : '';
@@ -120,7 +114,7 @@ const POS = {
   header: {
     partidaX: 122.4,
     partidaY: 732.5,
-    fechaX: 498.5 + FECHA_X_OFFSET, // ✅ mover fecha a la derecha
+    fechaX: 498.5 + FECHA_X_OFFSET, // mover fecha
     fechaY: 729.5,
     size: 12,
   },
@@ -130,7 +124,7 @@ const POS = {
       674.375, 659.875, 645.375, 630.875, 616.375,
       601.875, 587.25, 572.75, 558.25, 543.75,
       529.25, 514.75, 500.25, 485.75, 471.25,
-    ].map((y) => y + ROW_Y_OFFSET), // ✅ ajuste fino de altura
+    ].map((y) => y + ROW_Y_OFFSET),
     x: {
       nv: 46,
       desc: 120,
@@ -147,9 +141,34 @@ const POS = {
 };
 
 // =====================
+// Fetch SIEMPRE desde pre-produccion-valores
+// =====================
+async function fetchValoresByPartida(partida) {
+  const p = toStr(partida);
+  if (!p) return [];
+
+  const url = `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`;
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+// =====================
 // Export público
 // =====================
 export async function generatePdfTapajuntas(partida, rows) {
+  const p = toStr(partida);
+  if (!p) throw new Error('Partida vacía');
+
+  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p);
+  if (!safeRows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
+
   const base = import.meta.env.BASE_URL || '/';
   const templateUrl = `${base}pdf_modelo_tapajuntas.pdf`;
 
@@ -162,19 +181,16 @@ export async function generatePdfTapajuntas(partida, rows) {
 
   const templateBytes = await templateRes.arrayBuffer();
   const head = new Uint8Array(templateBytes.slice(0, 4));
-  const isPdf =
-    head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
+  const isPdf = head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
   if (!isPdf) {
-    throw new Error(
-      `La plantilla ${templateUrl} no parece un PDF válido (no empieza con %PDF).`
-    );
+    throw new Error(`La plantilla ${templateUrl} no parece un PDF válido (no empieza con %PDF).`);
   }
 
   const templateDoc = await PDFDocument.load(templateBytes);
   const outDoc = await PDFDocument.create();
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
 
-  const items = [...(rows || [])].sort((a, b) => toNum(a.NV) - toNum(b.NV));
+  const items = [...safeRows].sort((a, b) => toNum(a.NV) - toNum(b.NV));
   const pageSize = POS.table.yRows.length;
 
   for (let i = 0; i < items.length; i += pageSize) {
@@ -184,7 +200,7 @@ export async function generatePdfTapajuntas(partida, rows) {
     outDoc.addPage(page);
 
     // Header
-    drawFittedText(page, font, toStr(partida), POS.header.partidaX, POS.header.partidaY, {
+    drawFittedText(page, font, p, POS.header.partidaX, POS.header.partidaY, {
       size: POS.header.size,
       maxWidth: 120,
     });
@@ -234,7 +250,13 @@ export async function generatePdfTapajuntas(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-// ✅ Default export para que ViewPdf pueda hacer import PdfTapajuntas from ...
+// ✅ wrapper simple para ViewPdf
+export async function generatePdfTapajuntasByPartida(partida) {
+  return generatePdfTapajuntas(partida);
+}
+
+// Default export (por si querés importarlo como objeto)
 export default {
   generatePdfTapajuntas,
+  generatePdfTapajuntasByPartida,
 };

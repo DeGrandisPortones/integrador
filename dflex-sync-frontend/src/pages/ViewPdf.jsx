@@ -1,11 +1,16 @@
 // src/pages/ViewPdf.jsx
 import { useMemo, useState } from 'react';
 
-// Arm Primario (tu archivo real)
+// Arm Primario
 import {
   generatePdfArmPrimarioByNv,
   generatePdfArmPrimarioByPartida,
 } from './pdfs/PdfArmPrimario.jsx';
+
+// ✅ Imports estáticos (sin dynamic import para evitar 404 de chunks en Vercel)
+import { generatePdfDisenoLaserByPartida } from './pdfs/PdfDisenoLaser.jsx';
+import { generatePdfCortePlegadoByPartida } from './pdfs/PdfCortePlegado.jsx';
+import { generatePdfTapajuntasByPartida } from './pdfs/PdfTapajuntas.jsx';
 
 function toStr(v) {
   if (v === null || v === undefined) return '';
@@ -47,27 +52,6 @@ export default function ViewPdf() {
     }
   }
 
-  // Helper: carga módulo y busca función por nombre (named / default-object / default-fn)
-  async function callGenerator(importer, fnName, ...args) {
-    const mod = await importer();
-
-    const candidate =
-      mod?.[fnName] ??
-      mod?.default?.[fnName] ??
-      (fnName === 'default' ? mod?.default : null) ??
-      mod?.default;
-
-    if (typeof candidate !== 'function') {
-      const keys = Object.keys(mod || {});
-      const defKeys = mod?.default && typeof mod.default === 'object' ? Object.keys(mod.default) : [];
-      throw new Error(
-        `No se encontró la función "${fnName}". Exports disponibles: [${keys.join(', ')}] default: [${defKeys.join(', ')}]`
-      );
-    }
-
-    return candidate(...args);
-  }
-
   return (
     <div className="import-panel">
       <h2>Generar PDFs</h2>
@@ -105,8 +89,7 @@ export default function ViewPdf() {
             disabled={!canPartida || !!loadingKey}
             onClick={() =>
               run(`Partida_${toStr(partida)}_DisenoLaser.pdf`, async () => {
-                // Ajustá el nombre de la función según tu módulo real
-                return callGenerator(() => import('./pdfs/PdfDisenoLaser.jsx'), 'generatePdfDisenoLaser', toStr(partida));
+                return generatePdfDisenoLaserByPartida(toStr(partida));
               })
             }
           >
@@ -119,8 +102,7 @@ export default function ViewPdf() {
             disabled={!canPartida || !!loadingKey}
             onClick={() =>
               run(`Partida_${toStr(partida)}_CortePlegado.pdf`, async () => {
-                // Ajustá el nombre de la función según tu módulo real
-                return callGenerator(() => import('./pdfs/PdfCortePlegado.jsx'), 'generatePdfCortePlegado', toStr(partida));
+                return generatePdfCortePlegadoByPartida(toStr(partida));
               })
             }
           >
@@ -133,8 +115,7 @@ export default function ViewPdf() {
             disabled={!canPartida || !!loadingKey}
             onClick={() =>
               run(`Partida_${toStr(partida)}_Tapajuntas.pdf`, async () => {
-                // Ajustá el nombre de la función según tu módulo real
-                return callGenerator(() => import('./pdfs/PdfTapajuntas.jsx'), 'generatePdfTapajuntas', toStr(partida));
+                return generatePdfTapajuntasByPartida(toStr(partida));
               })
             }
           >
@@ -185,7 +166,7 @@ export default function ViewPdf() {
       <p className="hint" style={{ marginTop: 10 }}>
         Plantillas esperadas en <code>/public/</code>:
         <br />
-        <code>pdf_modelo_diseño_laser.pdf</code>, <code>pdf_modelo_corte_plegado.pdf</code>,{' '}
+        <code>pdf_modelo_diseno_laser.pdf</code>, <code>pdf_modelo_corte_plegado.pdf</code>,{' '}
         <code>pdf_modelo_tapajuntas.pdf</code>, <code>pdf_modelo_armPrimario.pdf</code>
       </p>
     </div>

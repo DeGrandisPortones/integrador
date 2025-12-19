@@ -1,9 +1,60 @@
 // src/pages/pdfs/PdfDisenoLaser.jsx
-import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { drawFittedText, toNum, toStr, todayDDMMYY } from './pdfUtils';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 const TEMPLATE_FILENAME = 'pdf_modelo_diseno_laser.pdf';
+
+// =====================
+// Helpers locales (sin depender de pdfUtils)
+// =====================
+function toStr(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).trim();
+}
+
+function toNum(v) {
+  if (v === null || v === undefined) return 0;
+  const s = String(v).replace(',', '.');
+  const m = s.match(/-?\d+(\.\d+)?/);
+  const n = m ? Number(m[0]) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function todayDDMMYY() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy}`;
+}
+
+function drawFittedText(page, font, text, x, y, opts = {}) {
+  const { size = 9, minSize = 6, maxWidth = null, color = rgb(0, 0, 0) } = opts;
+
+  const t = toStr(text);
+  if (!t) return;
+
+  if (!maxWidth) {
+    page.drawText(t, { x, y, size, font, color });
+    return;
+  }
+
+  let s = size;
+  while (s >= minSize) {
+    const w = font.widthOfTextAtSize(t, s);
+    if (w <= maxWidth) break;
+    s -= 0.5;
+  }
+
+  let finalText = t;
+  if (font.widthOfTextAtSize(finalText, s) > maxWidth) {
+    while (finalText.length > 0 && font.widthOfTextAtSize(finalText + '…', s) > maxWidth) {
+      finalText = finalText.slice(0, -1);
+    }
+    finalText = finalText ? finalText + '…' : '';
+  }
+
+  page.drawText(finalText, { x, y, size: s, font, color });
+}
 
 // =====================
 // Fetch SIEMPRE desde pre-produccion-valores
@@ -31,16 +82,12 @@ function calcLadoMasAltoFromParantesDescripcion(desc) {
   const s = toStr(desc);
   if (!s) return 0;
 
-  // Ej: "40x50" / "40 X 50" / "40X50"
   const m = s.match(/(\d+(?:[.,]\d+)?)\s*[xX]\s*(\d+(?:[.,]\d+)?)/);
   if (!m) return 0;
 
   const a = Number(String(m[1]).replace(',', '.'));
   const b = Number(String(m[2]).replace(',', '.'));
-  const max = Math.max(
-    Number.isFinite(a) ? a : 0,
-    Number.isFinite(b) ? b : 0
-  );
+  const max = Math.max(Number.isFinite(a) ? a : 0, Number.isFinite(b) ? b : 0);
   return max || 0;
 }
 
@@ -51,7 +98,7 @@ function getLadoMasAlto(row) {
 }
 
 function calcCalcEspadaFromRow(row) {
-  const A = getLadoMasAlto(row); // lado_mas_alto
+  const A = getLadoMasAlto(row);
   const B = toNum(row?.Largo_Parantes);
   const C = toNum(row?.DATOS_Brazos);
 
@@ -129,11 +176,11 @@ const POS = {
       nv: 34.32,
       desc: 94.92,
       dintelAncho: 145.66,
-      dist: 230.76, // ESPADA / distancia e/huecos
+      dist: 230.76,
       cant: 275.04,
       espadas: 322.2,
       alto: 395.52,
-      chapa: 429.5, // REBAJE / CHAPA
+      chapa: 429.5,
       largo: 478.5,
       altox2: 518.5,
     },
@@ -142,10 +189,6 @@ const POS = {
 
 // =====================
 // Generación PDF
-//
-// ✅ Soporta:
-//   - generatePdfDisenoLaser(partida) -> fetchea rows
-//   - generatePdfDisenoLaser(partida, rows) -> usa rows provistos
 // =====================
 export async function generatePdfDisenoLaser(partida, rows) {
   const p = toStr(partida);
@@ -195,12 +238,14 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const y = POS.t1.yRows[idx];
       if (y === undefined) return;
 
+      const largoTrav = r?.Largo_Travesaños ?? r?.Largo_Travesanos ?? r?.Largo_Travesaño ?? r?.Largo_Travesano;
+
       drawFittedText(page, font, r?.NV, POS.t1.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, r?.PARANTES_Descripcion, POS.t1.x.desc, y, { maxWidth: 55 });
       drawFittedText(page, font, r?.Largo_Parantes, POS.t1.x.largo, y, { maxWidth: 40 });
       drawFittedText(page, font, r?.DATOS_Hueco_Chico, POS.t1.x.hc, y, { maxWidth: 35 });
       drawFittedText(page, font, r?.DATOS_Hueco_Grande, POS.t1.x.hg, y, { maxWidth: 35 });
-      drawFittedText(page, font, r?.Largo_Travesaños, POS.t1.x.trav, y, { maxWidth: 55 });
+      drawFittedText(page, font, largoTrav, POS.t1.x.trav, y, { maxWidth: 55 });
       drawFittedText(page, font, r?.Parantes_Internos, POS.t1.x.parInt, y, { maxWidth: 55 });
       drawFittedText(page, font, r?.Cantidad_Soportes, POS.t1.x.cant, y, { maxWidth: 18 });
 
@@ -222,14 +267,12 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const y = POS.t2.yRows[idx];
       if (y === undefined) return;
 
-      drawFittedText(page, font, r?.NV, POS.t2.x.nv, y, { maxWidth: 40 });
-
       const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
 
+      drawFittedText(page, font, r?.NV, POS.t2.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, tipoPierna, POS.t2.x.desc, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.Largo_Planchuelas, POS.t2.x.largoPl, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
-
       drawFittedText(page, font, tipoPierna, POS.t2.x.pierna, y, { maxWidth: 40 });
 
       drawFittedText(page, font, r?.PUERTA_Posicion, POS.t2.x.lado, y, {
@@ -244,7 +287,6 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const y = POS.t3.yRows[idx];
       if (y === undefined) return;
 
-      // ESPADA: si viene persistido, usarlo; sino calcularlo
       const hasStored =
         r?.calc_espada !== undefined &&
         r?.calc_espada !== null &&
@@ -256,36 +298,31 @@ export async function generatePdfDisenoLaser(partida, rows) {
           ? String(Math.round(espadaValue))
           : '';
 
-      // CHAPA: según lado_mas_alto
       const ladoMasAlto = getLadoMasAlto(r);
       const chapa = ladoMasAlto >= 60 ? '100mm' : '75mm';
 
       const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
+      const largoTrav = r?.Largo_Travesaños ?? r?.Largo_Travesanos ?? r?.Largo_Travesaño ?? r?.Largo_Travesano;
 
       drawFittedText(page, font, r?.NV, POS.t3.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, tipoPierna, POS.t3.x.desc, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.DINTEL_Ancho, POS.t3.x.dintelAncho, y, { maxWidth: 55 });
 
-      // ESPADA / distancia e/huecos
       drawFittedText(page, font, espadaText, POS.t3.x.dist, y, {
         maxWidth: 32,
         size: 7,
         minSize: 5,
       });
 
-      // ALTO (lo mantenemos como estaba)
       drawFittedText(page, font, r?.Espesor_Revestimiento, POS.t3.x.alto, y, { maxWidth: 28 });
 
-      // CHAPA
       drawFittedText(page, font, chapa, POS.t3.x.chapa, y, {
         maxWidth: 44,
         size: 7,
         minSize: 5,
       });
 
-      drawFittedText(page, font, r?.Largo_Travesaños ?? r?.Largo_Travesaño, POS.t3.x.largo, y, {
-        maxWidth: 36,
-      });
+      drawFittedText(page, font, largoTrav, POS.t3.x.largo, y, { maxWidth: 36 });
       drawFittedText(page, font, r?.Largo_Parantes, POS.t3.x.altox2, y, { maxWidth: 42 });
     });
   }
@@ -294,7 +331,11 @@ export async function generatePdfDisenoLaser(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-// Default export para callGenerator (mod.default[fnName])
+export async function generatePdfDisenoLaserByPartida(partida) {
+  return generatePdfDisenoLaser(partida);
+}
+
 export default {
   generatePdfDisenoLaser,
+  generatePdfDisenoLaserByPartida,
 };
