@@ -2,7 +2,7 @@
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { drawFittedText, toNum, toStr, todayDDMMYY } from './pdfUtils';
 
-const TEMPLATE_FILENAME = 'pdf_modelo_diseño_laser.pdf'; // o 'pdf_modelo_diseno_laser.pdf'
+const TEMPLATE_FILENAME = 'pdf_modelo_diseno_laser.pdf'; // o 'pdf_modelo_diseno_laser.pdf'
 
 // =====================
 // Cálculos: lado_mas_alto y calc_espada

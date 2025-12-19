@@ -132,9 +132,37 @@ function buildPageSize(firstY, stepY, minY) {
 }
 
 // =====================
+// Fetch: SIEMPRE desde pre-produccion-valores
+// =====================
+async function fetchValoresByPartida(partida) {
+  const p = toStr(partida);
+  if (!p) return [];
+
+  const url = `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
+// =====================
 // PDF builder (EXPORTADO)
+//
+// ✅ Ahora soporta 2 usos:
+//   - generatePdfCortePlegado(partida)            -> fetchea rows solo
+//   - generatePdfCortePlegado(partida, rows)      -> usa rows provistos
 // =====================
 export async function generatePdfCortePlegado(partida, rows) {
+  const p = toStr(partida);
+  if (!p) throw new Error('Partida vacía');
+
+  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p);
+  if (!safeRows.length) throw new Error(`No hay portones con PARTIDA = ${p}`);
+
   const base = import.meta.env.BASE_URL || '/';
   const templateUrl = `${base}pdf_modelo_corte_plegado.pdf`;
 
@@ -151,7 +179,7 @@ export async function generatePdfCortePlegado(partida, rows) {
   const outDoc = await PDFDocument.create();
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
 
-  const items = [...rows].sort((a, b) => toNum(a.NV) - toNum(b.NV));
+  const items = [...safeRows].sort((a, b) => toNum(a.NV) - toNum(b.NV));
   const pageSize = buildPageSize(POS.table.firstY, POS.table.stepY, POS.table.minY);
 
   for (let i = 0; i < items.length; i += pageSize) {
@@ -161,7 +189,7 @@ export async function generatePdfCortePlegado(partida, rows) {
     outDoc.addPage(page);
 
     // Header
-    drawFittedText(page, font, toStr(partida), POS.header.partidaX, POS.header.partidaY, {
+    drawFittedText(page, font, p, POS.header.partidaX, POS.header.partidaY, {
       size: POS.header.size,
       maxWidth: 160,
     });
@@ -175,8 +203,8 @@ export async function generatePdfCortePlegado(partida, rows) {
       const y = POS.table.firstY + idx * POS.table.stepY;
       if (y < POS.table.minY) return;
 
-      const tipo = r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo;
-      const largoMm = Math.round(toMm(r.PIERNAS_Altura));
+      const tipo = r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo ?? '';
+      const largoMm = Math.round(toMm(r.PIERNAS_Altura ?? r.Piernas_Altura ?? r.PIERNA_Altura ?? r.Pierna_Altura));
       const piernaAncho = piernaAnchoByTipo(tipo);
       const tapaAncho = tapaAnchoByTipo(tipo);
 
@@ -203,7 +231,7 @@ export async function generatePdfCortePlegado(partida, rows) {
 }
 
 // =====================
-// Component
+// Component (opcional)
 // =====================
 export default function PdfCortePlegado() {
   const [partida, setPartida] = useState('');
@@ -222,16 +250,7 @@ export default function PdfCortePlegado() {
     setCount(null);
 
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`
-      );
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`HTTP ${res.status}: ${txt}`);
-      }
-
-      const data = await res.json();
-      const rows = data.rows || [];
+      const rows = await fetchValoresByPartida(p);
       setCount(rows.length);
 
       if (!rows.length) throw new Error(`No hay portones con PARTIDA = ${p}`);
