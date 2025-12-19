@@ -150,7 +150,7 @@ function getDintelAnchoMM(row) {
 }
 
 function getAltoMM(row) {
-  return toMM(row.Alto ?? row.ALTO ?? row.DATOS_Alto ?? row.DATOS_ALTO);
+  return toMM(row.PIERNAS_Altura);
 }
 
 // ✅ CAMBIO: también *100 acá (como pediste)
