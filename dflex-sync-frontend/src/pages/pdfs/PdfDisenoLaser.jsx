@@ -2,7 +2,27 @@
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { drawFittedText, toNum, toStr, todayDDMMYY } from './pdfUtils';
 
-const TEMPLATE_FILENAME = 'pdf_modelo_diseno_laser.pdf'; // o 'pdf_modelo_diseno_laser.pdf'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const TEMPLATE_FILENAME = 'pdf_modelo_diseno_laser.pdf';
+
+// =====================
+// Fetch SIEMPRE desde pre-produccion-valores
+// =====================
+async function fetchValoresByPartida(partida) {
+  const p = toStr(partida);
+  if (!p) return [];
+
+  const url = `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`;
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
 
 // =====================
 // Cálculos: lado_mas_alto y calc_espada
@@ -15,8 +35,13 @@ function calcLadoMasAltoFromParantesDescripcion(desc) {
   const m = s.match(/(\d+(?:[.,]\d+)?)\s*[xX]\s*(\d+(?:[.,]\d+)?)/);
   if (!m) return 0;
 
-  const right = Number(String(m[2]).replace(',', '.'));
-  return Number.isFinite(right) ? right : 0;
+  const a = Number(String(m[1]).replace(',', '.'));
+  const b = Number(String(m[2]).replace(',', '.'));
+  const max = Math.max(
+    Number.isFinite(a) ? a : 0,
+    Number.isFinite(b) ? b : 0
+  );
+  return max || 0;
 }
 
 function getLadoMasAlto(row) {
@@ -54,7 +79,7 @@ function calcCalcEspadaFromRow(row) {
 }
 
 // =====================
-// Coordenadas (igual que tu PdfPartidaPage original)
+// Coordenadas
 // =====================
 const POS = {
   header: {
@@ -117,8 +142,18 @@ const POS = {
 
 // =====================
 // Generación PDF
+//
+// ✅ Soporta:
+//   - generatePdfDisenoLaser(partida) -> fetchea rows
+//   - generatePdfDisenoLaser(partida, rows) -> usa rows provistos
 // =====================
 export async function generatePdfDisenoLaser(partida, rows) {
+  const p = toStr(partida);
+  if (!p) throw new Error('Partida vacía');
+
+  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p);
+  if (!safeRows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
+
   const base = import.meta.env.BASE_URL || '/';
   const templateUrl = `${base}${TEMPLATE_FILENAME}`;
 
@@ -135,7 +170,7 @@ export async function generatePdfDisenoLaser(partida, rows) {
   const outDoc = await PDFDocument.create();
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
 
-  const items = [...(rows || [])].sort((a, b) => toNum(a?.NV) - toNum(b?.NV));
+  const items = [...safeRows].sort((a, b) => toNum(a?.NV) - toNum(b?.NV));
   const pageSize = 6;
 
   for (let i = 0; i < items.length; i += pageSize) {
@@ -145,7 +180,7 @@ export async function generatePdfDisenoLaser(partida, rows) {
     outDoc.addPage(page);
 
     // Header
-    drawFittedText(page, font, toStr(partida), POS.header.partidaX, POS.header.partidaY, {
+    drawFittedText(page, font, p, POS.header.partidaX, POS.header.partidaY, {
       size: POS.header.size,
       maxWidth: 120,
     });
@@ -182,32 +217,21 @@ export async function generatePdfDisenoLaser(partida, rows) {
       });
     });
 
-    // Tabla 2 (igual que tu versión actual)
+    // Tabla 2
     chunk.forEach((r, idx) => {
       const y = POS.t2.yRows[idx];
       if (y === undefined) return;
 
       drawFittedText(page, font, r?.NV, POS.t2.x.nv, y, { maxWidth: 40 });
-      drawFittedText(
-        page,
-        font,
-        r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo,
-        POS.t2.x.desc,
-        y,
-        { maxWidth: 45 }
-      );
 
+      const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
+
+      drawFittedText(page, font, tipoPierna, POS.t2.x.desc, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.Largo_Planchuelas, POS.t2.x.largoPl, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
 
-      drawFittedText(
-        page,
-        font,
-        r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo,
-        POS.t2.x.pierna,
-        y,
-        { maxWidth: 40 }
-      );
+      drawFittedText(page, font, tipoPierna, POS.t2.x.pierna, y, { maxWidth: 40 });
+
       drawFittedText(page, font, r?.PUERTA_Posicion, POS.t2.x.lado, y, {
         maxWidth: 44,
         size: 7,
@@ -215,7 +239,7 @@ export async function generatePdfDisenoLaser(partida, rows) {
       });
     });
 
-    // Tabla 3 (calc_espada + chapa 100/75)
+    // Tabla 3
     chunk.forEach((r, idx) => {
       const y = POS.t3.yRows[idx];
       if (y === undefined) return;
@@ -229,22 +253,17 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const espadaValue = hasStored ? toNum(r?.calc_espada) : calcCalcEspadaFromRow(r);
       const espadaText =
         Number.isFinite(espadaValue) && (espadaValue !== 0 || hasStored)
-          ? String(Math.round(espadaValue)) // mm
+          ? String(Math.round(espadaValue))
           : '';
 
       // CHAPA: según lado_mas_alto
       const ladoMasAlto = getLadoMasAlto(r);
       const chapa = ladoMasAlto >= 60 ? '100mm' : '75mm';
 
+      const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
+
       drawFittedText(page, font, r?.NV, POS.t3.x.nv, y, { maxWidth: 40 });
-      drawFittedText(
-        page,
-        font,
-        r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo,
-        POS.t3.x.desc,
-        y,
-        { maxWidth: 45 }
-      );
+      drawFittedText(page, font, tipoPierna, POS.t3.x.desc, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.DINTEL_Ancho, POS.t3.x.dintelAncho, y, { maxWidth: 55 });
 
       // ESPADA / distancia e/huecos
@@ -275,7 +294,7 @@ export async function generatePdfDisenoLaser(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-// ✅ Default export para que puedas hacer: import PdfDisenoLaser from ...
+// Default export para callGenerator (mod.default[fnName])
 export default {
   generatePdfDisenoLaser,
 };
