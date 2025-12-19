@@ -1,7 +1,8 @@
 // src/pages/pdfs/PdfArmPrimario.jsx
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 // =====================
 // Helpers
@@ -29,12 +30,15 @@ function toMM(n) {
 function todayDDMMYY() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${String(d.getFullYear()).slice(-2)}`;
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${String(
+    d.getFullYear()
+  ).slice(-2)}`;
 }
 
 // Texto ajustado a ancho (reduce size y/o trunca)
 function drawFittedText(page, font, text, x, y, opts = {}) {
-  const { size = 9, minSize = 6, maxWidth = null, color = rgb(0, 0, 0) } = opts;
+  const { size = 9, minSize = 6, maxWidth = null, color = rgb(0, 0, 0) } =
+    opts;
 
   const t = toStr(text);
   if (!t) return;
@@ -53,7 +57,10 @@ function drawFittedText(page, font, text, x, y, opts = {}) {
 
   let finalText = t;
   if (font.widthOfTextAtSize(finalText, s) > maxWidth) {
-    while (finalText.length > 0 && font.widthOfTextAtSize(finalText + '…', s) > maxWidth) {
+    while (
+      finalText.length > 0 &&
+      font.widthOfTextAtSize(finalText + '…', s) > maxWidth
+    ) {
       finalText = finalText.slice(0, -1);
     }
     finalText = finalText ? finalText + '…' : '';
@@ -135,7 +142,9 @@ const POS = {
 // Lógicas de campos
 // =====================
 function normPiernaTipo(row) {
-  const t = toStr(row.PIERNAS_Tipo ?? row.PIERNAS_tipo ?? row.PIERNA_Tipo).toUpperCase();
+  const t = toStr(
+    row.PIERNAS_Tipo ?? row.PIERNAS_tipo ?? row.PIERNA_Tipo
+  ).toUpperCase();
   if (t.includes('ANCHA')) return 'ANCHA';
   if (t.includes('ANGOSTA')) return 'ANGOSTA';
   return t ? 'COMUN' : '';
@@ -169,7 +178,9 @@ function calc244(row) {
   if (!ancho) return '';
   const tipo = normPiernaTipo(row);
   const desc = tipo === 'ANCHA' ? 16 : tipo === 'ANGOSTA' ? 8 : 11;
-  return String(Math.round(ancho - desc));
+
+  // ✅ CAMBIO: al resultado final hay que multiplicarlo por 100
+  return String(Math.round((ancho - desc) * 100));
 }
 
 function splitTwoCells(text) {
@@ -467,7 +478,11 @@ export async function generatePdfArmPrimarioByPartida(partida) {
   const p = toStr(partida);
   if (!p) throw new Error('Partida vacía');
   const rows = await fetchValores({ partida: p });
-  if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
+  if (!rows.length) {
+    throw new Error(
+      `No hay filas en pre-produccion-valores para PARTIDA=${p}`
+    );
+  }
   return generatePdfArmadoPrimario(p, rows);
 }
 
@@ -475,7 +490,9 @@ export async function generatePdfArmPrimarioByNv(nv) {
   const n = toStr(nv);
   if (!n) throw new Error('NV vacío');
   const rows = await fetchValores({ nv: n });
-  if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para NV=${n}`);
+  if (!rows.length) {
+    throw new Error(`No hay filas en pre-produccion-valores para NV=${n}`);
+  }
   const p = toStr(rows[0]?.PARTIDA);
   return generatePdfArmadoPrimario(p || undefined, rows);
 }
