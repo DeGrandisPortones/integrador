@@ -165,7 +165,9 @@ export async function generatePdfTapajuntas(partida, rows) {
   const isPdf =
     head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
   if (!isPdf) {
-    throw new Error(`La plantilla ${templateUrl} no parece un PDF válido (no empieza con %PDF).`);
+    throw new Error(
+      `La plantilla ${templateUrl} no parece un PDF válido (no empieza con %PDF).`
+    );
   }
 
   const templateDoc = await PDFDocument.load(templateBytes);
@@ -231,3 +233,8 @@ export async function generatePdfTapajuntas(partida, rows) {
   const bytes = await outDoc.save();
   return new Blob([bytes], { type: 'application/pdf' });
 }
+
+// ✅ Default export para que ViewPdf pueda hacer import PdfTapajuntas from ...
+export default {
+  generatePdfTapajuntas,
+};

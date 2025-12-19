@@ -263,7 +263,7 @@ async function upsertColumnFormula(columnName, expression) {
   return rows[0];
 }
 
-// Compilar fórmulas para usarlas en Node
+// Compilar fórmulas para usarlas en Node (con el mismo “estilo” que el front)
 async function getCompiledFormulasFromDb() {
   const formulas = await getAllColumnFormulas();
   const compiled = {};
@@ -299,31 +299,6 @@ async function getCompiledFormulasFromDb() {
   return compiled;
 }
 
-// Aplica fórmulas a una fila cruda (no muta la original)
-function applyCompiledFormulasToRow(rawRow, compiled) {
-  const out = { ...rawRow };
-
-  for (const [col, fn] of Object.entries(compiled)) {
-    try {
-      const result = fn(rawRow);
-      if (
-        result !== undefined &&
-        result !== null &&
-        !(typeof result === 'number' && Number.isNaN(result))
-      ) {
-        out[col] = result;
-      }
-    } catch (err) {
-      console.error(
-        `Error evaluando fórmula para columna ${col} (NV=${rawRow.NV}):`,
-        err.message
-      );
-    }
-  }
-
-  return out;
-}
-
 // =====================
 // PREPRODUCCION_* EN SUPABASE
 // =====================
@@ -350,8 +325,81 @@ async function upsertPreproduccionSqlRow(rawRow) {
   );
 }
 
-// Inserta en preproduccion_valores si no existe.
-// Si existe, completa lado_mas_alto y calc_espada solo si esas keys NO están.
+/**
+ * Evalúa fórmulas con dependencias (igual a tu front, usando Proxy y cache).
+ * Devuelve un objeto con SOLO las columnas calculadas (no incluye crudas).
+ */
+function computeFormulaValuesWithDeps(row, compiled) {
+  const cache = {};
+  const visiting = new Set();
+
+  function evalCol(col) {
+    if (Object.prototype.hasOwnProperty.call(cache, col)) return cache[col];
+
+    if (visiting.has(col)) {
+      // dependencia circular: best-effort => valor crudo
+      return row[col];
+    }
+    visiting.add(col);
+
+    const fn = compiled[col];
+    if (!fn) {
+      cache[col] = row[col];
+      visiting.delete(col);
+      return cache[col];
+    }
+
+    const proxyRow = new Proxy(row, {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string') {
+          if (Object.prototype.hasOwnProperty.call(compiled, prop)) {
+            return evalCol(prop);
+          }
+          if (Object.prototype.hasOwnProperty.call(target, prop)) {
+            return target[prop];
+          }
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+      has(target, prop) {
+        if (typeof prop === 'string') {
+          if (Object.prototype.hasOwnProperty.call(compiled, prop)) return true;
+          if (Object.prototype.hasOwnProperty.call(target, prop)) return true;
+        }
+        return Reflect.has(target, prop);
+      },
+    });
+
+    let result;
+    try {
+      result = fn(proxyRow);
+    } catch (e) {
+      result = undefined;
+    }
+
+    visiting.delete(col);
+    cache[col] = result;
+    return result;
+  }
+
+  const out = {};
+  for (const col of Object.keys(compiled)) {
+    const v = evalCol(col);
+    if (v !== undefined && v !== null && !(typeof v === 'number' && Number.isNaN(v))) {
+      out[col] = v;
+    }
+  }
+  return out;
+}
+
+/**
+ * Inserta/actualiza en preproduccion_valores:
+ * - NO copia el row crudo entero (ese vive en preproduccion_sql)
+ * - Guarda SOLO:
+ *   - overrides manuales (data actual - base)
+ *   - + resultados de fórmulas recalculados desde base+overrides
+ *   - + lado_mas_alto / calc_espada (si vienen)
+ */
 async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
   if (!supabasePool) return;
 
@@ -360,29 +408,78 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
 
   if (!nvVal || Number.isNaN(nvVal)) return;
 
-  const computedRow = applyCompiledFormulasToRow(rawRow, compiled);
+  // 1) leer base (crudo) desde preproduccion_sql
+  let baseRow = null;
+  try {
+    const r = await supabasePool.query(
+      'SELECT data FROM preproduccion_sql WHERE nv = $1 LIMIT 1',
+      [nvVal]
+    );
+    baseRow = r?.rows?.[0]?.data || null;
+  } catch (e) {
+    console.warn('No se pudo leer preproduccion_sql para NV', nvVal, e?.message || e);
+    baseRow = null;
+  }
+
+  // fallback: si todavía no existe en sql, usamos el rawRow que vino de SQL Server
+  if (!baseRow) baseRow = { ...rawRow };
+
+  // 2) leer estado actual en valores (para detectar overrides manuales)
+  let existing = {};
+  try {
+    const r = await supabasePool.query(
+      'SELECT data FROM preproduccion_valores WHERE nv = $1 LIMIT 1',
+      [nvVal]
+    );
+    existing = r?.rows?.[0]?.data || {};
+  } catch (e) {
+    existing = {};
+  }
+
+  // Campos que “pertenecen” a fórmulas => NO se tratan como overrides manuales
+  const formulaCols = new Set(Object.keys(compiled || {}));
+  formulaCols.add('lado_mas_alto');
+  formulaCols.add('calc_espada');
+
+  // 3) overrides manuales = keys existentes que difieren de base y no son fórmula
+  const manualOverrides = {};
+  for (const [k, v] of Object.entries(existing || {})) {
+    if (formulaCols.has(k)) continue;
+    const baseV = baseRow?.[k];
+
+    // comparación simple; si necesitás deep compare lo ajustamos
+    if (v !== baseV) {
+      manualOverrides[k] = v;
+    }
+  }
+
+  // 4) compongo la fila efectiva para evaluar fórmulas
+  const effectiveRow = { ...baseRow, ...manualOverrides };
+
+  // 5) calcular fórmulas con dependencias
+  const computed = compiled ? computeFormulaValuesWithDeps(effectiveRow, compiled) : {};
+
+  // 6) asegurar derivados “extra” si vienen
+  if (rawRow && rawRow.lado_mas_alto !== undefined && rawRow.lado_mas_alto !== null) {
+    computed.lado_mas_alto = rawRow.lado_mas_alto;
+  }
+  if (rawRow && rawRow.calc_espada !== undefined && rawRow.calc_espada !== null) {
+    computed.calc_espada = rawRow.calc_espada;
+  }
+
+  // 7) payload final: overrides manuales + calculados
+  const payload = { ...manualOverrides, ...computed };
 
   await supabasePool.query(
     `
-    INSERT INTO preproduccion_valores (nv, data)
-    VALUES ($1, $2::jsonb)
-    ON CONFLICT (nv)
-    DO UPDATE SET
-      data =
-        COALESCE(preproduccion_valores.data, '{}'::jsonb)
-        || CASE
-             WHEN preproduccion_valores.data ? 'lado_mas_alto'
-               THEN '{}'::jsonb
-               ELSE jsonb_build_object('lado_mas_alto', EXCLUDED.data->'lado_mas_alto')
-           END
-        || CASE
-             WHEN preproduccion_valores.data ? 'calc_espada'
-               THEN '{}'::jsonb
-               ELSE jsonb_build_object('calc_espada', EXCLUDED.data->'calc_espada')
-           END,
-      updated_at = now()
+      INSERT INTO preproduccion_valores (nv, data)
+      VALUES ($1, $2::jsonb)
+      ON CONFLICT (nv)
+      DO UPDATE SET
+        data = EXCLUDED.data,
+        updated_at = now()
     `,
-    [nvVal, JSON.stringify(computedRow)]
+    [nvVal, JSON.stringify(payload)]
   );
 }
 
@@ -390,12 +487,10 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
 // LECTURA "DEFINITIVA" (preproduccion_valores)
 // =====================
 
-// Lee filas desde preproduccion_valores (para el front "definitivo")
-// Soporta: ?nv= y/o ?partida=
-async function getPreProduccionValoresRows({ nv, partida } = {}) {
+async function getPreProduccionSqlRowsFromSupabase({ nv, partida } = {}) {
   if (!supabasePool) throw new Error('SUPABASE_DB_URL no está configurado');
 
-  let sqlText = 'SELECT nv, data FROM preproduccion_valores';
+  let sqlText = 'SELECT nv, data FROM preproduccion_sql';
   const where = [];
   const params = [];
 
@@ -421,7 +516,90 @@ async function getPreProduccionValoresRows({ nv, partida } = {}) {
   sqlText += ' ORDER BY nv';
 
   const { rows } = await supabasePool.query(sqlText, params);
-  return rows.map((r) => r.data);
+
+  return (rows || []).map((r) => {
+    const obj = r?.data && typeof r.data === 'object' ? r.data : {};
+    // garantizamos NV en el objeto retornado
+    return { ...obj, NV: r.nv };
+  });
+}
+
+// Lee filas “definitivas” aplicando overlay:
+// base = preproduccion_sql.data
+// overlay = preproduccion_valores.data (manual overrides + resultados de fórmulas)
+// resultado = { ...base, ...overlay }
+async function getPreProduccionValoresRows({ nv, partida } = {}) {
+  if (!supabasePool) throw new Error('SUPABASE_DB_URL no está configurado');
+
+  // 1) base cruda
+  const baseRows = await getPreProduccionSqlRowsFromSupabase({ nv, partida });
+
+  // 2) overlays (valores)
+  let sqlText = 'SELECT nv, data FROM preproduccion_valores';
+  const where = [];
+  const params = [];
+
+  if (nv) {
+    const nvParsed = parseInt(nv, 10);
+    if (!Number.isNaN(nvParsed)) {
+      params.push(nvParsed);
+      where.push(`nv = $${params.length}`);
+    }
+  }
+
+  if (partida) {
+    params.push(String(partida).trim());
+    where.push(
+      `COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${params.length}`
+    );
+  }
+
+  if (where.length) {
+    sqlText += ' WHERE ' + where.join(' AND ');
+  }
+  sqlText += ' ORDER BY nv';
+
+  const { rows: overlayRaw } = await supabasePool.query(sqlText, params);
+  const overlayRows = (overlayRaw || []).map((r) => {
+    const obj = r?.data && typeof r.data === 'object' ? r.data : {};
+    return { ...obj, NV: r.nv };
+  });
+
+  const overlayByNv = new Map();
+  for (const r of overlayRows) {
+    const key =
+      r?.NV !== undefined && r?.NV !== null ? String(r.NV) : undefined;
+    if (key) overlayByNv.set(key, r);
+  }
+
+  // 3) merge base + overlay
+  const merged = baseRows.map((base) => {
+    const key =
+      base?.NV !== undefined && base?.NV !== null ? String(base.NV) : undefined;
+    const over = key ? overlayByNv.get(key) : null;
+    return over ? { ...base, ...over } : base;
+  });
+
+  // Si por algún motivo hay overlays sin base (raro), los agregamos
+  for (const over of overlayRows) {
+    const key =
+      over?.NV !== undefined && over?.NV !== null ? String(over.NV) : undefined;
+    if (!key) continue;
+    const hasBase = baseRows.some(
+      (b) => b?.NV !== undefined && b?.NV !== null && String(b.NV) === key
+    );
+    if (!hasBase) merged.push(over);
+  }
+
+  // 4) orden final
+  merged.sort((a, b) => {
+    const na = parseInt(a?.NV, 10);
+    const nb = parseInt(b?.NV, 10);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return String(a?.NV || '').localeCompare(String(b?.NV || ''));
+  });
+
+  return merged;
 }
 
 // =====================
@@ -547,7 +725,10 @@ function calcularLargoEspada({ DATOS_Brazos } = {}) {
     const s = DATOS_Brazos.trim();
 
     // intento JSON
-    if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+    if (
+      (s.startsWith('{') && s.endsWith('}')) ||
+      (s.startsWith('[') && s.endsWith(']'))
+    ) {
       try {
         const obj = JSON.parse(s);
         const candidates = [
@@ -604,7 +785,8 @@ function calcularLargoEspada({ DATOS_Brazos } = {}) {
 // Busca o crea un cliente (res.partner) a partir de la cabecera NTASVTAS.
 async function getOrCreatePartnerFromHeader(header) {
   const cuit = header.cuit ? String(header.cuit).trim() : null;
-  const clienteCode = header.cliente != null ? String(header.cliente).trim() : null;
+  const clienteCode =
+    header.cliente != null ? String(header.cliente).trim() : null;
 
   const nombre =
     header.nombre && String(header.nombre).trim()
@@ -623,7 +805,9 @@ async function getOrCreatePartnerFromHeader(header) {
     domain = [['name', '=', nombre]];
   }
 
-  const foundIds = await odooExecuteKw('res.partner', 'search', [domain], { limit: 1 });
+  const foundIds = await odooExecuteKw('res.partner', 'search', [domain], {
+    limit: 1,
+  });
 
   if (foundIds.length) {
     console.log(`Usando partner existente ${foundIds[0]} para cliente ${nombre}`);
@@ -882,7 +1066,7 @@ app.get('/api/pre-produccion', async (req, res) => {
   }
 });
 
-// Lee directamente de preproduccion_valores (para la vista "definitiva")
+// Lee “definitivo” (merge base + valores)
 // Soporta: ?nv= y/o ?partida=
 app.get('/api/pre-produccion-valores', async (req, res) => {
   const { nv, partida } = req.query;

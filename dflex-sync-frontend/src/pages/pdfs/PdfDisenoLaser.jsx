@@ -1,4 +1,4 @@
-// src/pages/pdfs/PdfDisenoLaser.js
+// src/pages/pdfs/PdfDisenoLaser.jsx
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { drawFittedText, toNum, toStr, todayDDMMYY } from './pdfUtils';
 
@@ -20,15 +20,15 @@ function calcLadoMasAltoFromParantesDescripcion(desc) {
 }
 
 function getLadoMasAlto(row) {
-  const fromRow = toNum(row.lado_mas_alto);
+  const fromRow = toNum(row?.lado_mas_alto);
   if (fromRow) return fromRow;
-  return calcLadoMasAltoFromParantesDescripcion(row.PARANTES_Descripcion);
+  return calcLadoMasAltoFromParantesDescripcion(row?.PARANTES_Descripcion);
 }
 
 function calcCalcEspadaFromRow(row) {
   const A = getLadoMasAlto(row); // lado_mas_alto
-  const B = toNum(row.Largo_Parantes);
-  const C = toNum(row.DATOS_Brazos);
+  const B = toNum(row?.Largo_Parantes);
+  const C = toNum(row?.DATOS_Brazos);
 
   if (!A || !B || !C) return 0;
 
@@ -135,7 +135,7 @@ export async function generatePdfDisenoLaser(partida, rows) {
   const outDoc = await PDFDocument.create();
   const font = await outDoc.embedFont(StandardFonts.Helvetica);
 
-  const items = [...(rows || [])].sort((a, b) => toNum(a.NV) - toNum(b.NV));
+  const items = [...(rows || [])].sort((a, b) => toNum(a?.NV) - toNum(b?.NV));
   const pageSize = 6;
 
   for (let i = 0; i < items.length; i += pageSize) {
@@ -160,47 +160,73 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const y = POS.t1.yRows[idx];
       if (y === undefined) return;
 
-      drawFittedText(page, font, r.NV, POS.t1.x.nv, y, { maxWidth: 40 });
-      drawFittedText(page, font, r.PARANTES_Descripcion, POS.t1.x.desc, y, { maxWidth: 55 });
-      drawFittedText(page, font, r.Largo_Parantes, POS.t1.x.largo, y, { maxWidth: 40 });
-      drawFittedText(page, font, r.DATOS_Hueco_Chico, POS.t1.x.hc, y, { maxWidth: 35 });
-      drawFittedText(page, font, r.DATOS_Hueco_Grande, POS.t1.x.hg, y, { maxWidth: 35 });
-      drawFittedText(page, font, r.Largo_Travesaños, POS.t1.x.trav, y, { maxWidth: 55 });
-      drawFittedText(page, font, r.Parantes_Internos, POS.t1.x.parInt, y, { maxWidth: 55 });
-      drawFittedText(page, font, r.Cantidad_Soportes, POS.t1.x.cant, y, { maxWidth: 18 });
+      drawFittedText(page, font, r?.NV, POS.t1.x.nv, y, { maxWidth: 40 });
+      drawFittedText(page, font, r?.PARANTES_Descripcion, POS.t1.x.desc, y, { maxWidth: 55 });
+      drawFittedText(page, font, r?.Largo_Parantes, POS.t1.x.largo, y, { maxWidth: 40 });
+      drawFittedText(page, font, r?.DATOS_Hueco_Chico, POS.t1.x.hc, y, { maxWidth: 35 });
+      drawFittedText(page, font, r?.DATOS_Hueco_Grande, POS.t1.x.hg, y, { maxWidth: 35 });
+      drawFittedText(page, font, r?.Largo_Travesaños, POS.t1.x.trav, y, { maxWidth: 55 });
+      drawFittedText(page, font, r?.Parantes_Internos, POS.t1.x.parInt, y, { maxWidth: 55 });
+      drawFittedText(page, font, r?.Cantidad_Soportes, POS.t1.x.cant, y, { maxWidth: 18 });
 
-      drawFittedText(page, font, r.PARANTES_Distribucion, POS.t1.x.disp, y, { maxWidth: 47 });
-      drawFittedText(page, font, r.PASADOR_Condicion, POS.t1.x.pas, y, { maxWidth: 36, size: 7, minSize: 5 });
-      drawFittedText(page, font, r.PUERTA_Posicion, POS.t1.x.puerta, y, { maxWidth: 42, size: 7, minSize: 5 });
+      drawFittedText(page, font, r?.PARANTES_Distribucion, POS.t1.x.disp, y, { maxWidth: 47 });
+      drawFittedText(page, font, r?.PASADOR_Condicion, POS.t1.x.pas, y, {
+        maxWidth: 36,
+        size: 7,
+        minSize: 5,
+      });
+      drawFittedText(page, font, r?.PUERTA_Posicion, POS.t1.x.puerta, y, {
+        maxWidth: 42,
+        size: 7,
+        minSize: 5,
+      });
     });
 
-    // Tabla 2 (se mantiene tal cual tu versión; si necesitás, la ajustamos)
+    // Tabla 2 (igual que tu versión actual)
     chunk.forEach((r, idx) => {
       const y = POS.t2.yRows[idx];
       if (y === undefined) return;
 
-      drawFittedText(page, font, r.NV, POS.t2.x.nv, y, { maxWidth: 40 });
-      drawFittedText(page, font, r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo, POS.t2.x.desc, y, { maxWidth: 45 });
+      drawFittedText(page, font, r?.NV, POS.t2.x.nv, y, { maxWidth: 40 });
+      drawFittedText(
+        page,
+        font,
+        r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo,
+        POS.t2.x.desc,
+        y,
+        { maxWidth: 45 }
+      );
 
-      drawFittedText(page, font, r.Largo_Planchuelas, POS.t2.x.largoPl, y, { maxWidth: 45 });
-      drawFittedText(page, font, r.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
+      drawFittedText(page, font, r?.Largo_Planchuelas, POS.t2.x.largoPl, y, { maxWidth: 45 });
+      drawFittedText(page, font, r?.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
 
-      drawFittedText(page, font, r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo, POS.t2.x.pierna, y, { maxWidth: 40 });
-      drawFittedText(page, font, r.PUERTA_Posicion, POS.t2.x.lado, y, { maxWidth: 44, size: 7, minSize: 5 });
+      drawFittedText(
+        page,
+        font,
+        r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo,
+        POS.t2.x.pierna,
+        y,
+        { maxWidth: 40 }
+      );
+      drawFittedText(page, font, r?.PUERTA_Posicion, POS.t2.x.lado, y, {
+        maxWidth: 44,
+        size: 7,
+        minSize: 5,
+      });
     });
 
-    // Tabla 3 (aquí va calc_espada y CHAPA 100/75)
+    // Tabla 3 (calc_espada + chapa 100/75)
     chunk.forEach((r, idx) => {
       const y = POS.t3.yRows[idx];
       if (y === undefined) return;
 
       // ESPADA: si viene persistido, usarlo; sino calcularlo
       const hasStored =
-        r.calc_espada !== undefined &&
-        r.calc_espada !== null &&
-        String(r.calc_espada).trim() !== '';
+        r?.calc_espada !== undefined &&
+        r?.calc_espada !== null &&
+        String(r?.calc_espada).trim() !== '';
 
-      const espadaValue = hasStored ? toNum(r.calc_espada) : calcCalcEspadaFromRow(r);
+      const espadaValue = hasStored ? toNum(r?.calc_espada) : calcCalcEspadaFromRow(r);
       const espadaText =
         Number.isFinite(espadaValue) && (espadaValue !== 0 || hasStored)
           ? String(Math.round(espadaValue)) // mm
@@ -210,24 +236,46 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const ladoMasAlto = getLadoMasAlto(r);
       const chapa = ladoMasAlto >= 60 ? '100mm' : '75mm';
 
-      drawFittedText(page, font, r.NV, POS.t3.x.nv, y, { maxWidth: 40 });
-      drawFittedText(page, font, r.PIERNAS_Tipo ?? r.PIERNAS_tipo ?? r.PIERNA_Tipo, POS.t3.x.desc, y, { maxWidth: 45 });
-      drawFittedText(page, font, r.DINTEL_Ancho, POS.t3.x.dintelAncho, y, { maxWidth: 55 });
+      drawFittedText(page, font, r?.NV, POS.t3.x.nv, y, { maxWidth: 40 });
+      drawFittedText(
+        page,
+        font,
+        r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo,
+        POS.t3.x.desc,
+        y,
+        { maxWidth: 45 }
+      );
+      drawFittedText(page, font, r?.DINTEL_Ancho, POS.t3.x.dintelAncho, y, { maxWidth: 55 });
 
       // ESPADA / distancia e/huecos
-      drawFittedText(page, font, espadaText, POS.t3.x.dist, y, { maxWidth: 32, size: 7, minSize: 5 });
+      drawFittedText(page, font, espadaText, POS.t3.x.dist, y, {
+        maxWidth: 32,
+        size: 7,
+        minSize: 5,
+      });
 
-      // ALTO (lo mantenemos)
-      drawFittedText(page, font, r.Espesor_Revestimiento, POS.t3.x.alto, y, { maxWidth: 28 });
+      // ALTO (lo mantenemos como estaba)
+      drawFittedText(page, font, r?.Espesor_Revestimiento, POS.t3.x.alto, y, { maxWidth: 28 });
 
       // CHAPA
-      drawFittedText(page, font, chapa, POS.t3.x.chapa, y, { maxWidth: 44, size: 7, minSize: 5 });
+      drawFittedText(page, font, chapa, POS.t3.x.chapa, y, {
+        maxWidth: 44,
+        size: 7,
+        minSize: 5,
+      });
 
-      drawFittedText(page, font, r.Largo_Travesaños ?? r.Largo_Travesaño, POS.t3.x.largo, y, { maxWidth: 36 });
-      drawFittedText(page, font, r.Largo_Parantes, POS.t3.x.altox2, y, { maxWidth: 42 });
+      drawFittedText(page, font, r?.Largo_Travesaños ?? r?.Largo_Travesaño, POS.t3.x.largo, y, {
+        maxWidth: 36,
+      });
+      drawFittedText(page, font, r?.Largo_Parantes, POS.t3.x.altox2, y, { maxWidth: 42 });
     });
   }
 
   const bytes = await outDoc.save();
   return new Blob([bytes], { type: 'application/pdf' });
 }
+
+// ✅ Default export para que puedas hacer: import PdfDisenoLaser from ...
+export default {
+  generatePdfDisenoLaser,
+};

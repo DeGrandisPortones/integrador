@@ -1,10 +1,11 @@
 // src/pages/ViewPdf.jsx
 import { useMemo, useState } from 'react';
-import { generatePdfDisenoLaser } from './pdfs/PdfDisenoLaser';
-import { generatePdfCortePlegado } from './pdfs/PdfCortePlegado';
-import { generatePdfTapajuntas } from './pdfs/PdfTapajuntas';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+// Arm Primario (tu archivo real)
+import {
+  generatePdfArmPrimarioByNv,
+  generatePdfArmPrimarioByPartida,
+} from './pdfs/PdfArmPrimario.jsx';
 
 function toStr(v) {
   if (v === null || v === undefined) return '';
@@ -13,79 +14,65 @@ function toStr(v) {
 
 export default function ViewPdf() {
   const [partida, setPartida] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [loadingWhich, setLoadingWhich] = useState('');
+  const [nv, setNv] = useState('');
+
+  const [loadingKey, setLoadingKey] = useState('');
   const [error, setError] = useState('');
-  const [count, setCount] = useState(null);
 
-  const canGenerate = useMemo(() => toStr(partida).length > 0, [partida]);
+  const canPartida = useMemo(() => toStr(partida).length > 0, [partida]);
+  const canNv = useMemo(() => toStr(nv).length > 0, [nv]);
 
-  async function fetchRowsByPartida(p) {
-    const res = await fetch(`${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`);
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`HTTP ${res.status}: ${txt}`);
-    }
-    const data = await res.json();
-    const rows = data.rows || [];
-    return rows;
+  async function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
-  async function handleGenerate(kind) {
-    const p = toStr(partida);
-    if (!p) return;
-
-    setLoading(true);
-    setLoadingWhich(kind);
+  async function run(key, fn) {
+    setLoadingKey(key);
     setError('');
-    setCount(null);
-
     try {
-      const rows = await fetchRowsByPartida(p);
-      setCount(rows.length);
-
-      if (!rows.length) {
-        throw new Error(`No hay portones con PARTIDA = ${p}`);
-      }
-
-      let pdfBlob;
-      let filename;
-
-      if (kind === 'diseno_laser') {
-        pdfBlob = await generatePdfDisenoLaser(p, rows);
-        filename = `Partida_${p}_DisenoLaser.pdf`;
-      } else if (kind === 'corte_plegado') {
-        pdfBlob = await generatePdfCortePlegado(p, rows);
-        filename = `Partida_${p}_CortePlegado.pdf`;
-      } else if (kind === 'tapajuntas') {
-        pdfBlob = await generatePdfTapajuntas(p, rows);
-        filename = `Partida_${p}_Tapajuntas.pdf`;
-      } else {
-        throw new Error('Tipo de PDF inválido.');
-      }
-
-      const url = URL.createObjectURL(pdfBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const blob = await fn();
+      await downloadBlob(blob, key);
     } catch (e) {
       console.error(e);
       setError(e?.message || String(e));
     } finally {
-      setLoading(false);
-      setLoadingWhich('');
+      setLoadingKey('');
     }
+  }
+
+  // Helper: carga módulo y busca función por nombre (named / default-object / default-fn)
+  async function callGenerator(importer, fnName, ...args) {
+    const mod = await importer();
+
+    const candidate =
+      mod?.[fnName] ??
+      mod?.default?.[fnName] ??
+      (fnName === 'default' ? mod?.default : null) ??
+      mod?.default;
+
+    if (typeof candidate !== 'function') {
+      const keys = Object.keys(mod || {});
+      const defKeys = mod?.default && typeof mod.default === 'object' ? Object.keys(mod.default) : [];
+      throw new Error(
+        `No se encontró la función "${fnName}". Exports disponibles: [${keys.join(', ')}] default: [${defKeys.join(', ')}]`
+      );
+    }
+
+    return candidate(...args);
   }
 
   return (
     <div className="import-panel">
-      <h2>PDF por PARTIDA</h2>
+      <h2>Generar PDFs</h2>
 
-      <div className="field-row" style={{ gap: 12, flexWrap: 'wrap' }}>
+      <div className="field-row" style={{ gap: 16, flexWrap: 'wrap' }}>
         <label>
           PARTIDA:&nbsp;
           <input
@@ -96,45 +83,110 @@ export default function ViewPdf() {
           />
         </label>
 
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => handleGenerate('diseno_laser')}
-          disabled={!canGenerate || loading}
-        >
-          {loading && loadingWhich === 'diseno_laser' ? 'Generando…' : 'PDF Diseño Laser'}
-        </button>
-
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => handleGenerate('corte_plegado')}
-          disabled={!canGenerate || loading}
-        >
-          {loading && loadingWhich === 'corte_plegado' ? 'Generando…' : 'PDF Corte y Plegado'}
-        </button>
-
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => handleGenerate('tapajuntas')}
-          disabled={!canGenerate || loading}
-        >
-          {loading && loadingWhich === 'tapajuntas' ? 'Generando…' : 'PDF Tapajuntas'}
-        </button>
+        <label>
+          NV (portón):&nbsp;
+          <input
+            type="text"
+            value={nv}
+            onChange={(e) => setNv(e.target.value)}
+            placeholder="Ej: 4003"
+          />
+        </label>
       </div>
 
-      {count !== null && (
-        <div className="info">
-          Portones encontrados: <b>{count}</b>
+      {/* ===== PDFs por PARTIDA ===== */}
+      <div style={{ marginTop: 12 }}>
+        <h3 style={{ margin: '12px 0 6px' }}>Por PARTIDA</h3>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canPartida || !!loadingKey}
+            onClick={() =>
+              run(`Partida_${toStr(partida)}_DisenoLaser.pdf`, async () => {
+                // Ajustá el nombre de la función según tu módulo real
+                return callGenerator(() => import('./pdfs/PdfDisenoLaser.jsx'), 'generatePdfDisenoLaser', toStr(partida));
+              })
+            }
+          >
+            {loadingKey ? '...' : 'PDF Diseño Laser'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canPartida || !!loadingKey}
+            onClick={() =>
+              run(`Partida_${toStr(partida)}_CortePlegado.pdf`, async () => {
+                // Ajustá el nombre de la función según tu módulo real
+                return callGenerator(() => import('./pdfs/PdfCortePlegado.jsx'), 'generatePdfCortePlegado', toStr(partida));
+              })
+            }
+          >
+            {loadingKey ? '...' : 'PDF Corte y Plegado'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canPartida || !!loadingKey}
+            onClick={() =>
+              run(`Partida_${toStr(partida)}_Tapajuntas.pdf`, async () => {
+                // Ajustá el nombre de la función según tu módulo real
+                return callGenerator(() => import('./pdfs/PdfTapajuntas.jsx'), 'generatePdfTapajuntas', toStr(partida));
+              })
+            }
+          >
+            {loadingKey ? '...' : 'PDF Tapajuntas'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canPartida || !!loadingKey}
+            onClick={() =>
+              run(`Partida_${toStr(partida)}_ArmadoPrimario.pdf`, async () => {
+                return generatePdfArmPrimarioByPartida(toStr(partida));
+              })
+            }
+          >
+            {loadingKey ? '...' : 'PDF Armado Primario (1 hoja por portón)'}
+          </button>
+        </div>
+      </div>
+
+      {/* ===== PDF por NV ===== */}
+      <div style={{ marginTop: 16 }}>
+        <h3 style={{ margin: '12px 0 6px' }}>Por NV (1 portón)</h3>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canNv || !!loadingKey}
+            onClick={() =>
+              run(`NV_${toStr(nv)}_ArmadoPrimario.pdf`, async () => {
+                return generatePdfArmPrimarioByNv(toStr(nv));
+              })
+            }
+          >
+            {loadingKey ? '...' : 'PDF Armado Primario'}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="error" style={{ marginTop: 8 }}>
+          ⚠ {error}
         </div>
       )}
 
-      {error && <div className="error">⚠ {error}</div>}
-
-      <p className="hint">
-        Plantillas en <code>/public</code>:&nbsp;
-        <code>pdf_modelo_diseño_laser.pdf</code>, <code>pdf_modelo_corte_plegado.pdf</code>, <code>pdf_modelo_tapajuntas.pdf</code>.
+      <p className="hint" style={{ marginTop: 10 }}>
+        Plantillas esperadas en <code>/public/</code>:
+        <br />
+        <code>pdf_modelo_diseño_laser.pdf</code>, <code>pdf_modelo_corte_plegado.pdf</code>,{' '}
+        <code>pdf_modelo_tapajuntas.pdf</code>, <code>pdf_modelo_armPrimario.pdf</code>
       </p>
     </div>
   );
