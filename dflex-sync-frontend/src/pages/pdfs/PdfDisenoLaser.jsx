@@ -178,7 +178,7 @@ const POS = {
     partidaY: 739.34,
     fechaX: 481.44,
     fechaY: 740.0,
-    size: 150,
+    size: 12,
   },
 
   t1: {
