@@ -76,6 +76,42 @@ async function fetchValoresByPartida(partida) {
 }
 
 // =====================
+// Helpers específicos PUERTA
+// =====================
+function getPuertaPosicion(row) {
+  return toStr(
+    row?.PUERTA_Posicion ??
+      row?.Puerta_Posicion ??
+      row?.puerta_posicion ??
+      row?.PUERTA_POSICION
+  );
+}
+
+function calcPuertaSiNoFromPos(pos) {
+  const p = toStr(pos).toUpperCase();
+  if (!p) return 'NO';
+  return p === 'NO' ? 'NO' : 'SI';
+}
+
+function getPuertaAlto(row) {
+  return toStr(
+    row?.Puerta_Alto ??
+      row?.PUERTA_Alto ??
+      row?.puerta_alto ??
+      row?.PUERTA_ALTO
+  );
+}
+
+function getPuertaAncho(row) {
+  return toStr(
+    row?.Puerta_Ancho ??
+      row?.PUERTA_Ancho ??
+      row?.puerta_ancho ??
+      row?.PUERTA_ANCHO
+  );
+}
+
+// =====================
 // Cálculos: lado_mas_alto y calc_espada
 // =====================
 function calcLadoMasAltoFromParantesDescripcion(desc) {
@@ -162,9 +198,9 @@ const POS = {
       largoPl: 145.66,
       dist: 192.94,
       pierna: 241.43,
-      sino: 280.08,
-      puertaAlto: 329.52,
-      ancho: 390.12,
+      sino: 280.08,        // <= acá va SI/NO (según PUERTA_Posicion)
+      puertaAlto: 329.52,  // <= acá va Puerta_Alto
+      ancho: 390.12,       // <= acá va Puerta_Ancho
       lado: 470.5,
       descCanio: 518.5,
     },
@@ -238,7 +274,11 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const y = POS.t1.yRows[idx];
       if (y === undefined) return;
 
-      const largoTrav = r?.Largo_Travesaños ?? r?.Largo_Travesanos ?? r?.Largo_Travesaño ?? r?.Largo_Travesano;
+      const largoTrav =
+        r?.Largo_Travesaños ??
+        r?.Largo_Travesanos ??
+        r?.Largo_Travesaño ??
+        r?.Largo_Travesano;
 
       drawFittedText(page, font, r?.NV, POS.t1.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, r?.PARANTES_Descripcion, POS.t1.x.desc, y, { maxWidth: 55 });
@@ -262,20 +302,50 @@ export async function generatePdfDisenoLaser(partida, rows) {
       });
     });
 
-    // Tabla 2
+    // Tabla 2  ✅ CAMBIOS PEDIDOS
     chunk.forEach((r, idx) => {
       const y = POS.t2.yRows[idx];
       if (y === undefined) return;
 
       const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
 
+      const puertaPos = getPuertaPosicion(r);
+      const puertaSiNo = calcPuertaSiNoFromPos(puertaPos);
+
+      const puertaAlto = getPuertaAlto(r);
+      const puertaAncho = getPuertaAncho(r);
+
       drawFittedText(page, font, r?.NV, POS.t2.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, tipoPierna, POS.t2.x.desc, y, { maxWidth: 45 });
+
       drawFittedText(page, font, r?.Largo_Planchuelas, POS.t2.x.largoPl, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
+
       drawFittedText(page, font, tipoPierna, POS.t2.x.pierna, y, { maxWidth: 40 });
 
-      drawFittedText(page, font, r?.PUERTA_Posicion, POS.t2.x.lado, y, {
+      // Si/No = SI si PUERTA_Posicion != NO
+      drawFittedText(page, font, puertaSiNo, POS.t2.x.sino, y, {
+        maxWidth: 30,
+        size: 9,
+        minSize: 7,
+      });
+
+      // Largo total = Puerta_Alto
+      drawFittedText(page, font, puertaAlto, POS.t2.x.puertaAlto, y, {
+        maxWidth: 55,
+        size: 9,
+        minSize: 7,
+      });
+
+      // Ancho = Puerta_Ancho
+      drawFittedText(page, font, puertaAncho, POS.t2.x.ancho, y, {
+        maxWidth: 55,
+        size: 9,
+        minSize: 7,
+      });
+
+      // Mantengo el “lado” (venía PUERTA_Posicion en tu versión)
+      drawFittedText(page, font, puertaPos, POS.t2.x.lado, y, {
         maxWidth: 44,
         size: 7,
         minSize: 5,
@@ -302,7 +372,11 @@ export async function generatePdfDisenoLaser(partida, rows) {
       const chapa = ladoMasAlto >= 60 ? '100mm' : '75mm';
 
       const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
-      const largoTrav = r?.Largo_Travesaños ?? r?.Largo_Travesanos ?? r?.Largo_Travesaño ?? r?.Largo_Travesano;
+      const largoTrav =
+        r?.Largo_Travesaños ??
+        r?.Largo_Travesanos ??
+        r?.Largo_Travesaño ??
+        r?.Largo_Travesano;
 
       drawFittedText(page, font, r?.NV, POS.t3.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, tipoPierna, POS.t3.x.desc, y, { maxWidth: 45 });
