@@ -76,42 +76,6 @@ async function fetchValoresByPartida(partida) {
 }
 
 // =====================
-// Helpers específicos PUERTA
-// =====================
-function getPuertaPosicion(row) {
-  return toStr(
-    row?.PUERTA_Posicion ??
-      row?.Puerta_Posicion ??
-      row?.puerta_posicion ??
-      row?.PUERTA_POSICION
-  );
-}
-
-function calcPuertaSiNoFromPos(pos) {
-  const p = toStr(pos).toUpperCase();
-  if (!p) return 'NO';
-  return p === 'NO' ? 'NO' : 'SI';
-}
-
-function getPuertaAlto(row) {
-  return toStr(
-    row?.Puerta_Alto ??
-      row?.PUERTA_Alto ??
-      row?.puerta_alto ??
-      row?.PUERTA_ALTO
-  );
-}
-
-function getPuertaAncho(row) {
-  return toStr(
-    row?.Puerta_Ancho ??
-      row?.PUERTA_Ancho ??
-      row?.puerta_ancho ??
-      row?.PUERTA_ANCHO
-  );
-}
-
-// =====================
 // Cálculos: lado_mas_alto y calc_espada
 // =====================
 function calcLadoMasAltoFromParantesDescripcion(desc) {
@@ -162,6 +126,53 @@ function calcCalcEspadaFromRow(row) {
 }
 
 // =====================
+// Puertas: SI/NO, Alto y Ancho
+// =====================
+function getPuertaPos(row) {
+  // En tu tabla se ve como PUERTA_Posicion, pero agrego fallbacks por las dudas
+  return (
+    toStr(row?.PUERTA_Posicion) ||
+    toStr(row?.Puerta_Posicion) ||
+    toStr(row?.puerta_posicion) ||
+    ''
+  );
+}
+
+function calcPuertaSiNo(row) {
+  const pos = getPuertaPos(row).toUpperCase();
+  // Regla pedida: si PUERTA_Posicion es diferente a "NO" => "SI", sino "NO"
+  if (!pos) return 'NO';
+  if (pos === 'NO' || pos === '0') return 'NO';
+  return 'SI';
+}
+
+function getPuertaAlto(row) {
+  // En tu UI se ve "Puerta_Alto"
+  const v =
+    row?.Puerta_Alto ??
+    row?.PUERTA_Alto ??
+    row?.puerta_alto ??
+    row?.PUERTA_ALTO ??
+    null;
+
+  const s = toStr(v);
+  return s ? s : '';
+}
+
+function getPuertaAncho(row) {
+  // En tu UI se ve "Puerta_Ancho"
+  const v =
+    row?.Puerta_Ancho ??
+    row?.PUERTA_Ancho ??
+    row?.puerta_ancho ??
+    row?.PUERTA_ANCHO ??
+    null;
+
+  const s = toStr(v);
+  return s ? s : '';
+}
+
+// =====================
 // Coordenadas
 // =====================
 const POS = {
@@ -198,10 +209,10 @@ const POS = {
       largoPl: 145.66,
       dist: 192.94,
       pierna: 241.43,
-      sino: 280.08,        // <= acá va SI/NO (según PUERTA_Posicion)
-      puertaAlto: 329.52,  // <= acá va Puerta_Alto
-      ancho: 390.12,       // <= acá va Puerta_Ancho
-      lado: 470.5,
+      sino: 280.08, // <-- SI/NO
+      puertaAlto: 329.52, // <-- Largo total
+      ancho: 390.12, // <-- Ancho
+      lado: 470.5, // <-- Lado (posición puerta)
       descCanio: 518.5,
     },
   },
@@ -302,49 +313,44 @@ export async function generatePdfDisenoLaser(partida, rows) {
       });
     });
 
-    // Tabla 2  ✅ CAMBIOS PEDIDOS
+    // Tabla 2  ✅ (PUERTAS)
     chunk.forEach((r, idx) => {
       const y = POS.t2.yRows[idx];
       if (y === undefined) return;
 
       const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
 
-      const puertaPos = getPuertaPosicion(r);
-      const puertaSiNo = calcPuertaSiNoFromPos(puertaPos);
-
+      // Campos nuevos pedidos
+      const puertaSiNo = calcPuertaSiNo(r);
       const puertaAlto = getPuertaAlto(r);
       const puertaAncho = getPuertaAncho(r);
+      const puertaPos = getPuertaPos(r); // Lado
 
       drawFittedText(page, font, r?.NV, POS.t2.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, tipoPierna, POS.t2.x.desc, y, { maxWidth: 45 });
-
       drawFittedText(page, font, r?.Largo_Planchuelas, POS.t2.x.largoPl, y, { maxWidth: 45 });
       drawFittedText(page, font, r?.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
 
       drawFittedText(page, font, tipoPierna, POS.t2.x.pierna, y, { maxWidth: 40 });
 
-      // Si/No = SI si PUERTA_Posicion != NO
+      // ✅ SI/NO (derivado de PUERTA_Posicion)
       drawFittedText(page, font, puertaSiNo, POS.t2.x.sino, y, {
-        maxWidth: 30,
-        size: 9,
-        minSize: 7,
+        maxWidth: 40,
+        size: 8,
+        minSize: 6,
       });
 
-      // Largo total = Puerta_Alto
+      // ✅ Largo total => Puerta_Alto
       drawFittedText(page, font, puertaAlto, POS.t2.x.puertaAlto, y, {
         maxWidth: 55,
-        size: 9,
-        minSize: 7,
       });
 
-      // Ancho = Puerta_Ancho
+      // ✅ Ancho => Puerta_Ancho
       drawFittedText(page, font, puertaAncho, POS.t2.x.ancho, y, {
         maxWidth: 55,
-        size: 9,
-        minSize: 7,
       });
 
-      // Mantengo el “lado” (venía PUERTA_Posicion en tu versión)
+      // ✅ Lado => PUERTA_Posicion (IZQUIERDA / DERECHA / MEDIO / NO)
       drawFittedText(page, font, puertaPos, POS.t2.x.lado, y, {
         maxWidth: 44,
         size: 7,
