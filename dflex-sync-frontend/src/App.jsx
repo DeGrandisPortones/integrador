@@ -286,7 +286,7 @@ function MainApp({ session, signOut }) {
       if (Object.prototype.hasOwnProperty.call(cache, col)) return cache[col];
 
       if (visiting.has(col)) {
-        console.warn('Dependencia circular de fórmulas en la columna:', col);
+  
         return row[col];
       }
       visiting.add(col);

@@ -2,7 +2,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-// IMPORTANTE: el default NO es null, así nunca explota la desestructuración
 const AuthContext = createContext({
   session: null,
   user: null,
@@ -25,6 +24,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let alive = true;
 
+    console.log('[AuthProvider] mounted');
+
     async function fetchRole(token) {
       try {
         const res = await fetch(
@@ -40,23 +41,35 @@ export function AuthProvider({ children }) {
     }
 
     function stashToken(token, label) {
-      // Guardar token para copiar desde DevTools:
-      //   window.__DFLEX_TOKEN__
-      // y para copiar al clipboard:
-      //   copy(window.__DFLEX_TOKEN__)
-      window.__DFLEX_TOKEN__ = token;
+      try {
+        window.__DFLEX_TOKEN__ = token;
+      } catch {
+        // ignore
+      }
 
-      // También lo dejamos persistido en sessionStorage (solo pestaña actual)
       try {
         sessionStorage.setItem('__DFLEX_TOKEN__', token);
       } catch {
         // ignore
       }
 
-      if (import.meta.env.DEV) {
-        const short = `${token.slice(0, 16)}...${token.slice(-8)}`;
-        console.log(`[AUTH_TOKEN] ${label} guardado en window.__DFLEX_TOKEN__ (short):`, short);
+      // Log simple, para que lo encuentres aunque haya spam
+      const short = token ? `${token.slice(0, 12)}...${token.slice(-6)}` : '(empty)';
+      console.log(`[AuthProvider] token guardado (${label}):`, short);
+    }
+
+    function clearToken() {
+      try {
+        delete window.__DFLEX_TOKEN__;
+      } catch {
+        // ignore
       }
+      try {
+        sessionStorage.removeItem('__DFLEX_TOKEN__');
+      } catch {
+        // ignore
+      }
+      console.log('[AuthProvider] token limpiado');
     }
 
     async function init() {
@@ -75,6 +88,7 @@ export function AuthProvider({ children }) {
           const r = await fetchRole(s.access_token);
           if (alive) setRole(r);
         } else {
+          clearToken();
           if (alive) setRole('viewer');
         }
       } finally {
@@ -91,19 +105,10 @@ export function AuthProvider({ children }) {
       if (newSession?.access_token) {
         stashToken(newSession.access_token, 'change');
         const r = await fetchRole(newSession.access_token);
-        setRole(r);
+        if (alive) setRole(r);
       } else {
-        try {
-          delete window.__DFLEX_TOKEN__;
-        } catch {
-          // ignore
-        }
-        try {
-          sessionStorage.removeItem('__DFLEX_TOKEN__');
-        } catch {
-          // ignore
-        }
-        setRole('viewer');
+        clearToken();
+        if (alive) setRole('viewer');
       }
     });
 
