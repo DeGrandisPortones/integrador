@@ -1,5 +1,5 @@
 // src/pages/LoginPage.jsx
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider.jsx';
 
 export default function LoginPage() {
@@ -10,50 +10,36 @@ export default function LoginPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  // estados para estilos
-  const [didSubmit, setDidSubmit] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const showError = !!error && !loading && !success;
 
-  // Si el usuario vuelve a tipear, reseteamos el “success”
-  useEffect(() => {
-    if (!didSubmit) return;
-    setError('');
-    setIsSuccess(false);
-    // no reseteo didSubmit para poder marcar rojo/verde al volver a enviar
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email, password]);
+  const emailClass = useMemo(() => {
+    if (success) return 'login-input login-input--success';
+    if (showError) return 'login-input login-input--error';
+    return 'login-input';
+  }, [success, showError]);
 
-  const inputClassName = useMemo(() => {
-    const base = 'login-input';
-    if (!didSubmit) return base;
-
-    // si hay error => rojo
-    if (error) return `${base} login-input--error`;
-
-    // si está ok => verde
-    if (isSuccess) return `${base} login-input--success`;
-
-    return base;
-  }, [didSubmit, error, isSuccess]);
+  const passClass = useMemo(() => {
+    if (success) return 'login-input login-input--success';
+    if (showError) return 'login-input login-input--error';
+    return 'login-input';
+  }, [success, showError]);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setDidSubmit(true);
+
     setError('');
+    setSuccess(false);
     setLoading(true);
 
     try {
       await signIn(email.trim(), password);
-
-      // marcamos success para que se ponga verde
-      setIsSuccess(true);
-
-      // dejamos que se vea el verde un instante y luego el AuthProvider cambia a la app
-      // (no redirigimos manualmente: el gate se encarga)
-      await new Promise((r) => setTimeout(r, 450));
+      // ✅ marcamos success; el delay lo hace AuthProvider.signIn()
+      setSuccess(true);
+      // luego AuthGate cambia automáticamente a MainApp
     } catch (err) {
-      setIsSuccess(false);
+      setSuccess(false);
       setError(err?.message || String(err));
     } finally {
       setLoading(false);
@@ -61,15 +47,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="page">
-      <div className="login-panel">
-        <h2>Ingresar</h2>
+    <div className="page" style={{ justifyContent: 'center' }}>
+      <div className="import-panel login-panel">
+        <h2 style={{ marginTop: 0 }}>Ingresar</h2>
 
-        <form onSubmit={handleSubmit} className="login-form">
+        <form onSubmit={handleSubmit} className="field-row login-form">
           <label>
             Email
             <input
-              className={inputClassName}
+              className={emailClass}
               type="email"
               value={email}
               autoComplete="username"
@@ -82,7 +68,7 @@ export default function LoginPage() {
           <label>
             Contraseña
             <input
-              className={inputClassName}
+              className={passClass}
               type="password"
               value={password}
               autoComplete="current-password"
@@ -96,7 +82,7 @@ export default function LoginPage() {
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
 
-          {error && <div className="error">⚠ {error}</div>}
+          {showError && <div className="error">⚠ {error}</div>}
         </form>
       </div>
     </div>

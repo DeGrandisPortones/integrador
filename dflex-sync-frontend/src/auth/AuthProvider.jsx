@@ -119,6 +119,10 @@ export function AuthProvider({ children }) {
   async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+
+    // ✅ Delay para que el LoginPage muestre "verde" antes de que el AuthGate cambie a MainApp
+    await new Promise((r) => setTimeout(r, 650));
+
     return data;
   }
 
