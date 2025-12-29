@@ -121,7 +121,7 @@ export function AuthProvider({ children }) {
     if (error) throw error;
 
     // ✅ Delay para que el LoginPage muestre "verde" antes de que el AuthGate cambie a MainApp
-    await new Promise((r) => setTimeout(r, 650));
+    await new Promise((r) => setTimeout(r, 4000));
 
     return data;
   }
