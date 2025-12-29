@@ -1,13 +1,10 @@
 // src/pages/PdfLinkView.jsx
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { generatePdfDisenoLaserByPartida } from './pdfs/PdfDisenoLaser.jsx';
 import { generatePdfCortePlegadoByPartida } from './pdfs/PdfCortePlegado.jsx';
 import { generatePdfTapajuntasByPartida } from './pdfs/PdfTapajuntas.jsx';
-import {
-  generatePdfArmPrimarioByPartida,
-  generatePdfArmPrimarioByNv,
-} from './pdfs/PdfArmPrimario.jsx';
+import { generatePdfArmPrimarioByPartida, generatePdfArmPrimarioByNv } from './pdfs/PdfArmPrimario.jsx';
 
 function toStr(v) {
   if (v === null || v === undefined) return '';
@@ -53,6 +50,20 @@ function getPdfRequestFromLocation() {
   return { active: !!partida, tipo, partida, nv };
 }
 
+// ✅ Chrome/Android suele fallar renderizando PDFs desde blob: en iframe.
+// Solución: en mobile/tablet abrimos el blob directamente (misma pestaña) para que use el visor nativo.
+function isMobileOrTablet() {
+  const ua = navigator.userAgent || '';
+  // Android tablet + phones, iPad/iPhone
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+
+  // iPadOS 13+ se reporta como Mac, pero con touch
+  const isIpadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  if (isIpadOs) return true;
+
+  return false;
+}
+
 export default function PdfLinkView() {
   const req = useMemo(() => getPdfRequestFromLocation(), []);
 
@@ -60,6 +71,9 @@ export default function PdfLinkView() {
   const [error, setError] = useState('');
   const [blobUrl, setBlobUrl] = useState('');
   const [filename, setFilename] = useState('');
+
+  const openedRef = useRef(false);
+  const mobile = useMemo(() => isMobileOrTablet(), []);
 
   const spec = useMemo(() => {
     // ✅ 4 PDFs soportados (MODO PÚBLICO: NO token)
@@ -107,7 +121,9 @@ export default function PdfLinkView() {
       setLoading(true);
       setError('');
       setFilename('');
+      openedRef.current = false;
 
+      // Limpieza del anterior
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
         setBlobUrl('');
@@ -143,8 +159,17 @@ export default function PdfLinkView() {
         if (!alive) return;
 
         const url = URL.createObjectURL(blob);
+        const name = spec.filename({ partida: req.partida, nv: req.nv });
+
         setBlobUrl(url);
-        setFilename(spec.filename({ partida: req.partida, nv: req.nv }));
+        setFilename(name);
+
+        // ✅ En mobile/tablet: abrir directo para usar visor nativo (evita iframe con "Abrir")
+        if (mobile && !openedRef.current) {
+          openedRef.current = true;
+          window.location.replace(url);
+          return;
+        }
       } catch (e) {
         if (!alive) return;
         setError(e?.message || String(e));
@@ -161,7 +186,7 @@ export default function PdfLinkView() {
       if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [req.active, req.partida, req.nv, req.tipo, spec]);
+  }, [req.active, req.partida, req.nv, req.tipo, spec, mobile]);
 
   function download() {
     if (!blobUrl) return;
@@ -204,7 +229,8 @@ export default function PdfLinkView() {
         {loading && <div>Generando PDF…</div>}
         {error && <div style={{ color: 'crimson' }}>⚠ {error}</div>}
 
-        {!loading && !error && blobUrl && (
+        {/* ✅ Solo desktop: iframe. En mobile/tablet redirigimos al visor nativo */}
+        {!loading && !error && blobUrl && !mobile && (
           <iframe
             title="PDF"
             src={blobUrl}
@@ -216,6 +242,12 @@ export default function PdfLinkView() {
               marginTop: 10,
             }}
           />
+        )}
+
+        {!loading && !error && blobUrl && mobile && (
+          <div style={{ opacity: 0.8 }}>
+            Abriendo PDF en el visor del dispositivo…
+          </div>
         )}
       </div>
 
