@@ -451,8 +451,6 @@ function MainApp({ session, signOut, role }) {
   return (
     <div className="page">
       <header className="header">
-        <h1>Pre Producción – NV / Portones</h1>
-
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <nav className="nav">
             <button

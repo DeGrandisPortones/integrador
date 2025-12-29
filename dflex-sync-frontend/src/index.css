@@ -507,3 +507,44 @@ body {
 }
 
 /* Reutiliza tu .table-wrapper y .data-table existentes para el detalle */
+/* Login panel */
+.login-panel {
+  max-width: 420px;
+  margin: 40px auto;
+}
+
+/* Form layout */
+.login-form {
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Inputs base */
+.login-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid #d0d5dd;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+/* Error: rojo "rojito" */
+.login-input--error {
+  border-color: #ff1a1a;
+  background-color: #fff0f0;
+  box-shadow: 0 0 0 3px rgba(255, 26, 26, 0.25);
+}
+
+/* Success: verde */
+.login-input--success {
+  border-color: #11b981;
+  background-color: #effdf6;
+  box-shadow: 0 0 0 3px rgba(17, 185, 129, 0.22);
+}
+
+/* Disabled visual */
+.login-input:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
