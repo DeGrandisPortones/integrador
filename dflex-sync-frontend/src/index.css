@@ -1,3 +1,5 @@
+/* src/index.css */
+
 :root {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color-scheme: light;
@@ -114,7 +116,7 @@ body {
 
 .table-wrapper {
   flex: 1;
-  overflow-x: auto;  /* scroll horizontal */
+  overflow-x: auto; /* scroll horizontal */
   overflow-y: auto;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -127,18 +129,18 @@ body {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 12px;
-  table-layout: fixed;      /* columnas más uniformes */
-  min-width: 1400px;        /* fuerza scroll horizontal si la pantalla es más chica */
+  table-layout: fixed; /* columnas más uniformes */
+  min-width: 1400px; /* fuerza scroll horizontal si la pantalla es más chica */
 }
 
 .data-table th,
 .data-table td {
   padding: 6px 8px;
-  border-bottom: 1px solid #e5e7eb;  /* sólo línea horizontal, sin bordes verticales */
+  border-bottom: 1px solid #e5e7eb; /* sólo línea horizontal, sin bordes verticales */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 110px;                  /* ancho parecido entre columnas */
+  min-width: 110px; /* ancho parecido entre columnas */
 }
 
 /* columnas muy chicas (ID / NV) un poco más angostas */
@@ -184,7 +186,7 @@ body {
   box-sizing: border-box;
   font-size: 12px;
   padding: 2px 4px;
-  border: none;             /* sin borde, aspecto de texto plano */
+  border: none; /* sin borde, aspecto de texto plano */
   background: transparent;
 }
 
@@ -506,44 +508,68 @@ body {
   color: #b91c1c;
 }
 
-/* Reutiliza tu .table-wrapper y .data-table existentes para el detalle */
-/* Login panel */
+/* ===== LOGIN ===== */
+
 .login-panel {
   max-width: 420px;
   margin: 40px auto;
+  padding: 22px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  box-sizing: border-box;
 }
 
-/* Form layout */
+.login-panel h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
 .login-form {
+  display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
-/* Inputs base */
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  text-align: left;
+  font-size: 13px;
+  color: #111827;
+}
+
 .login-input {
   width: 100%;
+  box-sizing: border-box;
   padding: 10px 12px;
   border-radius: 10px;
   border: 2px solid #d0d5dd;
+  background: #ffffff;
   outline: none;
   transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
 
-/* Error: rojo "rojito" */
+.login-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
 .login-input--error {
   border-color: #ff1a1a;
   background-color: #fff0f0;
   box-shadow: 0 0 0 3px rgba(255, 26, 26, 0.25);
 }
 
-/* Success: verde */
 .login-input--success {
   border-color: #11b981;
   background-color: #effdf6;
   box-shadow: 0 0 0 3px rgba(17, 185, 129, 0.22);
 }
 
-/* Disabled visual */
 .login-input:disabled {
   opacity: 0.75;
   cursor: not-allowed;

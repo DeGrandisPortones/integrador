@@ -1,5 +1,5 @@
 // src/pages/LoginPage.jsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider.jsx';
 
 export default function LoginPage() {
@@ -11,87 +11,69 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // idle | error | success
-  const [statusEmail, setStatusEmail] = useState('idle');
-  const [statusPassword, setStatusPassword] = useState('idle');
+  // estados para estilos
+  const [didSubmit, setDidSubmit] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
-  const canSubmit = useMemo(() => {
-    return !loading && email.trim().length > 0 && password.length > 0;
-  }, [loading, email, password]);
+  // Si el usuario vuelve a tipear, reseteamos el “success”
+  useEffect(() => {
+    if (!didSubmit) return;
+    setError('');
+    setIsSuccess(false);
+    // no reseteo didSubmit para poder marcar rojo/verde al volver a enviar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email, password]);
 
-  function resetStatusesIfNeeded(field) {
-    // si el usuario empieza a corregir, sacamos el rojo/verde
-    if (field === 'email' && statusEmail !== 'idle') setStatusEmail('idle');
-    if (field === 'password' && statusPassword !== 'idle') setStatusPassword('idle');
-    if (error) setError('');
-  }
+  const inputClassName = useMemo(() => {
+    const base = 'login-input';
+    if (!didSubmit) return base;
+
+    // si hay error => rojo
+    if (error) return `${base} login-input--error`;
+
+    // si está ok => verde
+    if (isSuccess) return `${base} login-input--success`;
+
+    return base;
+  }, [didSubmit, error, isSuccess]);
 
   async function handleSubmit(e) {
     e.preventDefault();
-
-    const eMail = email.trim();
-
+    setDidSubmit(true);
     setError('');
     setLoading(true);
 
-    // reset a "neutral" antes de intentar
-    setStatusEmail('idle');
-    setStatusPassword('idle');
-
     try {
-      await signIn(eMail, password);
+      await signIn(email.trim(), password);
 
-      // Success: pintar verde y dejar un instante para que se vea
-      setStatusEmail('success');
-      setStatusPassword('success');
+      // marcamos success para que se ponga verde
+      setIsSuccess(true);
 
-      // El AuthProvider actualizará session y el AuthGate cambia de pantalla solo.
-      setTimeout(() => {
-        // no hacemos nada más; solo dejamos que el flujo siga.
-      }, 600);
+      // dejamos que se vea el verde un instante y luego el AuthProvider cambia a la app
+      // (no redirigimos manualmente: el gate se encarga)
+      await new Promise((r) => setTimeout(r, 450));
     } catch (err) {
-      const msg = err?.message || String(err);
-      setError(msg);
-
-      // Error: rojo fuerte en ambos por simplicidad (credenciales)
-      setStatusEmail('error');
-      setStatusPassword('error');
+      setIsSuccess(false);
+      setError(err?.message || String(err));
     } finally {
       setLoading(false);
     }
   }
 
-  const emailClass =
-    statusEmail === 'error'
-      ? 'login-input login-input--error'
-      : statusEmail === 'success'
-      ? 'login-input login-input--success'
-      : 'login-input';
-
-  const passClass =
-    statusPassword === 'error'
-      ? 'login-input login-input--error'
-      : statusPassword === 'success'
-      ? 'login-input login-input--success'
-      : 'login-input';
-
   return (
     <div className="page">
-      <div className="import-panel login-panel">
+      <div className="login-panel">
         <h2>Ingresar</h2>
 
-        <form onSubmit={handleSubmit} className="field-row login-form">
+        <form onSubmit={handleSubmit} className="login-form">
           <label>
             Email
             <input
-              className={emailClass}
+              className={inputClassName}
               type="email"
               value={email}
               autoComplete="username"
-              onChange={(e) => {
-                setEmail(e.target.value);
-                resetStatusesIfNeeded('email');
-              }}
+              onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
             />
@@ -100,20 +82,17 @@ export default function LoginPage() {
           <label>
             Contraseña
             <input
-              className={passClass}
+              className={inputClassName}
               type="password"
               value={password}
               autoComplete="current-password"
-              onChange={(e) => {
-                setPassword(e.target.value);
-                resetStatusesIfNeeded('password');
-              }}
+              onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
             />
           </label>
 
-          <button type="submit" className="btn-secondary" disabled={!canSubmit}>
+          <button type="submit" className="btn-secondary" disabled={loading}>
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
 
