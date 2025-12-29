@@ -114,7 +114,7 @@ const POS = {
   header: {
     partidaX: 122.4,
     partidaY: 732.5,
-    fechaX: 498.5 + FECHA_X_OFFSET, // mover fecha
+    fechaX: 498.5 + FECHA_X_OFFSET,
     fechaY: 729.5,
     size: 12,
   },
@@ -141,14 +141,20 @@ const POS = {
 };
 
 // =====================
-// Fetch SIEMPRE desde pre-produccion-valores
+// Fetch: privado si hay token, público si NO hay token
 // =====================
-async function fetchValoresByPartida(partida) {
+function getValoresEndpoint(accessToken) {
+  return accessToken ? '/api/pre-produccion-valores' : '/api/public/pre-produccion-valores';
+}
+
+async function fetchValoresByPartida(partida, accessToken) {
   const p = toStr(partida);
   if (!p) return [];
 
-  const url = `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`;
-  const res = await fetch(url);
+  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?partida=${encodeURIComponent(p)}`;
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+
+  const res = await fetch(url, headers ? { headers } : undefined);
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
@@ -162,11 +168,11 @@ async function fetchValoresByPartida(partida) {
 // =====================
 // Export público
 // =====================
-export async function generatePdfTapajuntas(partida, rows) {
+export async function generatePdfTapajuntas(partida, rows, accessToken) {
   const p = toStr(partida);
   if (!p) throw new Error('Partida vacía');
 
-  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p);
+  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p, accessToken);
   if (!safeRows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
 
   const base = import.meta.env.BASE_URL || '/';
@@ -250,12 +256,11 @@ export async function generatePdfTapajuntas(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-// ✅ wrapper simple para ViewPdf
-export async function generatePdfTapajuntasByPartida(partida) {
-  return generatePdfTapajuntas(partida);
+// wrapper para ViewPdf / PdfLinkView
+export async function generatePdfTapajuntasByPartida(partida, accessToken) {
+  return generatePdfTapajuntas(partida, null, accessToken);
 }
 
-// Default export (por si querés importarlo como objeto)
 export default {
   generatePdfTapajuntas,
   generatePdfTapajuntasByPartida,

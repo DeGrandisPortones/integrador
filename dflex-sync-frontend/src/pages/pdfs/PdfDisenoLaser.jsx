@@ -57,14 +57,20 @@ function drawFittedText(page, font, text, x, y, opts = {}) {
 }
 
 // =====================
-// Fetch SIEMPRE desde pre-produccion-valores
+// Fetch: privado si hay token, público si NO hay token
 // =====================
-async function fetchValoresByPartida(partida) {
+function getValoresEndpoint(accessToken) {
+  return accessToken ? '/api/pre-produccion-valores' : '/api/public/pre-produccion-valores';
+}
+
+async function fetchValoresByPartida(partida, accessToken) {
   const p = toStr(partida);
   if (!p) return [];
 
-  const url = `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`;
-  const res = await fetch(url);
+  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?partida=${encodeURIComponent(p)}`;
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+
+  const res = await fetch(url, headers ? { headers } : undefined);
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
@@ -206,10 +212,10 @@ const POS = {
       largoPl: 145.66,
       dist: 192.94,
       pierna: 241.43,
-      sino: 280.08,        // ✅ SI/NO (puerta)
-      puertaAlto: 329.52,  // ✅ Largo total (Puerta_Alto)
-      ancho: 390.12,       // ✅ Ancho (Puerta_Ancho)
-      lado: 470.5,         // (deja la posición/lado como estaba)
+      sino: 280.08,
+      puertaAlto: 329.52,
+      ancho: 390.12,
+      lado: 470.5,
       descCanio: 518.5,
     },
   },
@@ -234,11 +240,11 @@ const POS = {
 // =====================
 // Generación PDF
 // =====================
-export async function generatePdfDisenoLaser(partida, rows) {
+export async function generatePdfDisenoLaser(partida, rows, accessToken) {
   const p = toStr(partida);
   if (!p) throw new Error('Partida vacía');
 
-  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p);
+  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p, accessToken);
   if (!safeRows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
 
   const base = import.meta.env.BASE_URL || '/';
@@ -310,17 +316,16 @@ export async function generatePdfDisenoLaser(partida, rows) {
       });
     });
 
-    // Tabla 2  ✅ ACÁ VA TU CAMBIO
+    // Tabla 2
     chunk.forEach((r, idx) => {
       const y = POS.t2.yRows[idx];
       if (y === undefined) return;
 
       const tipoPierna = r?.PIERNAS_Tipo ?? r?.PIERNAS_tipo ?? r?.PIERNA_Tipo;
 
-      // NUEVOS CAMPOS
-      const puertaSiNo = calcPuertaSiNo(r);     // SI / NO según PUERTA_Posicion
-      const puertaAlto = getPuertaAlto(r);      // Largo total
-      const puertaAncho = getPuertaAncho(r);    // Ancho
+      const puertaSiNo = calcPuertaSiNo(r);
+      const puertaAlto = getPuertaAlto(r);
+      const puertaAncho = getPuertaAncho(r);
 
       drawFittedText(page, font, r?.NV, POS.t2.x.nv, y, { maxWidth: 40 });
       drawFittedText(page, font, tipoPierna, POS.t2.x.desc, y, { maxWidth: 45 });
@@ -328,16 +333,10 @@ export async function generatePdfDisenoLaser(partida, rows) {
       drawFittedText(page, font, r?.DATOS_Brazos, POS.t2.x.dist, y, { maxWidth: 45 });
       drawFittedText(page, font, tipoPierna, POS.t2.x.pierna, y, { maxWidth: 40 });
 
-      // ✅ SI/NO debajo de “Puertas”
       drawFittedText(page, font, puertaSiNo, POS.t2.x.sino, y, { maxWidth: 40 });
-
-      // ✅ Largo total => Puerta_Alto
       drawFittedText(page, font, puertaAlto, POS.t2.x.puertaAlto, y, { maxWidth: 55 });
-
-      // ✅ Ancho => Puerta_Ancho
       drawFittedText(page, font, puertaAncho, POS.t2.x.ancho, y, { maxWidth: 55 });
 
-      // (si querés conservar “lado”, lo dejamos)
       drawFittedText(page, font, r?.PUERTA_Posicion, POS.t2.x.lado, y, {
         maxWidth: 44,
         size: 7,
@@ -398,8 +397,8 @@ export async function generatePdfDisenoLaser(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-export async function generatePdfDisenoLaserByPartida(partida) {
-  return generatePdfDisenoLaser(partida);
+export async function generatePdfDisenoLaserByPartida(partida, accessToken) {
+  return generatePdfDisenoLaser(partida, null, accessToken);
 }
 
 export default {

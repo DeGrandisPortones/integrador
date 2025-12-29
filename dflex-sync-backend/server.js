@@ -8,6 +8,7 @@ const sql = require('mssql');
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
 
 // =====================
 // CONFIGURACIÓN
@@ -46,9 +47,7 @@ const ODOO_URL = process.env.ODOO_URL;
 const ODOO_DB = process.env.ODOO_DB;
 const ODOO_USERNAME = process.env.ODOO_USERNAME;
 const ODOO_PASSWORD = process.env.ODOO_PASSWORD;
-const ODOO_COMPANY_ID = process.env.ODOO_COMPANY_ID
-  ? parseInt(process.env.ODOO_COMPANY_ID, 10)
-  : null;
+const ODOO_COMPANY_ID = process.env.ODOO_COMPANY_ID ? parseInt(process.env.ODOO_COMPANY_ID, 10) : null;
 
 // --- Supabase (Postgres) ---
 const SUPABASE_DB_URL = process.env.SUPABASE_DB_URL || null;
@@ -58,15 +57,79 @@ if (SUPABASE_DB_URL) {
   supabasePool = new Pool({ connectionString: SUPABASE_DB_URL });
   console.log('Pool de Supabase inicializado.');
 } else {
-  console.warn(
-    'ATENCIÓN: SUPABASE_DB_URL no está configurado. API de fórmulas / valores no funcionará.'
-  );
+  console.warn('ATENCIÓN: SUPABASE_DB_URL no está configurado. API de fórmulas / valores no funcionará.');
 }
 
 if (supabasePool) {
   supabasePool.on('error', (err) => {
     console.error('Error en pool de Supabase:', err);
   });
+}
+
+// --- Supabase Admin (Auth verify) ---
+const SUPABASE_URL = process.env.SUPABASE_URL || null;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || null;
+
+const supabaseAdmin =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+    : null;
+
+if (!supabaseAdmin) {
+  console.warn('ATENCIÓN: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no configurados. Auth/roles no funcionarán.');
+}
+
+// =====================
+// AUTH / ROLES
+// =====================
+
+async function requireAuth(req, res, next) {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Supabase admin no configurado' });
+    }
+
+    const hdr = req.headers.authorization || '';
+    const m = hdr.match(/^Bearer\s+(.+)$/i);
+    if (!m) return res.status(401).json({ error: 'Falta token Bearer' });
+
+    const token = m[1];
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+
+    if (error || !data?.user) {
+      return res.status(401).json({ error: 'Token inválido' });
+    }
+
+    req.user = data.user;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'No autorizado', details: e.message || String(e) });
+  }
+}
+
+async function attachRole(req, _res, next) {
+  try {
+    req.role = 'viewer';
+    if (!supabasePool || !req.user?.id) return next();
+
+    const r = await supabasePool.query('SELECT role FROM app_users WHERE user_id = $1 LIMIT 1', [req.user.id]);
+    req.role = r?.rows?.[0]?.role || 'viewer';
+    next();
+  } catch {
+    req.role = 'viewer';
+    next();
+  }
+}
+
+function requireRole(allowedRoles) {
+  const allowed = new Set(allowedRoles || []);
+  return (req, res, next) => {
+    const role = req.role || 'viewer';
+    if (!allowed.has(role)) {
+      return res.status(403).json({ error: 'No tenés permisos', role });
+    }
+    next();
+  };
 }
 
 // =====================
@@ -91,10 +154,7 @@ function loadNvTerminados() {
     nvTerminadosCache = set;
     console.log(`NV terminados cargados: ${set.size}`);
   } catch (err) {
-    console.warn(
-      'No se pudo leer nv_terminados.txt. Se asume que no hay NV terminados.',
-      err.message
-    );
+    console.warn('No se pudo leer nv_terminados.txt. Se asume que no hay NV terminados.', err.message);
     nvTerminadosCache = new Set();
   }
 
@@ -119,7 +179,6 @@ async function getSqlPool() {
 // NTASVTAS / INTASVTAS
 // ---------------------
 
-// Cabecera NTASVTAS por idpedido
 async function getNtavHeader(idpedido) {
   const pool = await getSqlPool();
   const result = await pool
@@ -165,7 +224,6 @@ async function getNtavHeader(idpedido) {
   return result.recordset[0];
 }
 
-// Líneas INTASVTAS + PRODUCTOS
 async function getNtavLinesFromHeader(header) {
   const pool = await getSqlPool();
 
@@ -221,14 +279,12 @@ async function getPreProduccionRows(nv) {
   const result = await request.query(query);
   const allRows = result.recordset || [];
 
-  // Aplicar NV terminados: marcar Estado y filtrar para el listado
   const nvTerminados = loadNvTerminados();
   const filtered = allRows.filter((row) => {
-    const nvVal =
-      row.NV !== null && row.NV !== undefined ? String(row.NV).trim() : '';
+    const nvVal = row.NV !== null && row.NV !== undefined ? String(row.NV).trim() : '';
     if (nvTerminados.has(nvVal)) {
       row.Estado = 'TERMINADO';
-      return false; // no se lista
+      return false;
     }
     return true;
   });
@@ -263,7 +319,6 @@ async function upsertColumnFormula(columnName, expression) {
   return rows[0];
 }
 
-// Compilar fórmulas para usarlas en Node (con el mismo “estilo” que el front)
 async function getCompiledFormulasFromDb() {
   const formulas = await getAllColumnFormulas();
   const compiled = {};
@@ -289,10 +344,7 @@ async function getCompiledFormulasFromDb() {
       );
       compiled[col] = fn;
     } catch (err) {
-      console.error(
-        `No se pudo compilar la fórmula para columna ${col}:`,
-        err.message
-      );
+      console.error(`No se pudo compilar la fórmula para columna ${col}:`, err.message);
     }
   }
 
@@ -303,13 +355,10 @@ async function getCompiledFormulasFromDb() {
 // PREPRODUCCION_* EN SUPABASE
 // =====================
 
-// Guarda crudo en preproduccion_sql (si existe, actualiza)
 async function upsertPreproduccionSqlRow(rawRow) {
   if (!supabasePool) return;
 
-  const nvVal =
-    rawRow.NV !== null && rawRow.NV !== undefined ? parseInt(rawRow.NV, 10) : null;
-
+  const nvVal = rawRow.NV !== null && rawRow.NV !== undefined ? parseInt(rawRow.NV, 10) : null;
   if (!nvVal || Number.isNaN(nvVal)) return;
 
   await supabasePool.query(
@@ -325,10 +374,6 @@ async function upsertPreproduccionSqlRow(rawRow) {
   );
 }
 
-/**
- * Evalúa fórmulas con dependencias (igual a tu front, usando Proxy y cache).
- * Devuelve un objeto con SOLO las columnas calculadas (no incluye crudas).
- */
 function computeFormulaValuesWithDeps(row, compiled) {
   const cache = {};
   const visiting = new Set();
@@ -337,7 +382,6 @@ function computeFormulaValuesWithDeps(row, compiled) {
     if (Object.prototype.hasOwnProperty.call(cache, col)) return cache[col];
 
     if (visiting.has(col)) {
-      // dependencia circular: best-effort => valor crudo
       return row[col];
     }
     visiting.add(col);
@@ -373,7 +417,7 @@ function computeFormulaValuesWithDeps(row, compiled) {
     let result;
     try {
       result = fn(proxyRow);
-    } catch (e) {
+    } catch {
       result = undefined;
     }
 
@@ -392,74 +436,47 @@ function computeFormulaValuesWithDeps(row, compiled) {
   return out;
 }
 
-/**
- * Inserta/actualiza en preproduccion_valores:
- * - NO copia el row crudo entero (ese vive en preproduccion_sql)
- * - Guarda SOLO:
- *   - overrides manuales (data actual - base)
- *   - + resultados de fórmulas recalculados desde base+overrides
- *   - + lado_mas_alto / calc_espada (si vienen)
- */
 async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
   if (!supabasePool) return;
 
-  const nvVal =
-    rawRow.NV !== null && rawRow.NV !== undefined ? parseInt(rawRow.NV, 10) : null;
-
+  const nvVal = rawRow.NV !== null && rawRow.NV !== undefined ? parseInt(rawRow.NV, 10) : null;
   if (!nvVal || Number.isNaN(nvVal)) return;
 
-  // 1) leer base (crudo) desde preproduccion_sql
   let baseRow = null;
   try {
-    const r = await supabasePool.query(
-      'SELECT data FROM preproduccion_sql WHERE nv = $1 LIMIT 1',
-      [nvVal]
-    );
+    const r = await supabasePool.query('SELECT data FROM preproduccion_sql WHERE nv = $1 LIMIT 1', [nvVal]);
     baseRow = r?.rows?.[0]?.data || null;
   } catch (e) {
     console.warn('No se pudo leer preproduccion_sql para NV', nvVal, e?.message || e);
     baseRow = null;
   }
 
-  // fallback: si todavía no existe en sql, usamos el rawRow que vino de SQL Server
   if (!baseRow) baseRow = { ...rawRow };
 
-  // 2) leer estado actual en valores (para detectar overrides manuales)
   let existing = {};
   try {
-    const r = await supabasePool.query(
-      'SELECT data FROM preproduccion_valores WHERE nv = $1 LIMIT 1',
-      [nvVal]
-    );
+    const r = await supabasePool.query('SELECT data FROM preproduccion_valores WHERE nv = $1 LIMIT 1', [nvVal]);
     existing = r?.rows?.[0]?.data || {};
-  } catch (e) {
+  } catch {
     existing = {};
   }
 
-  // Campos que “pertenecen” a fórmulas => NO se tratan como overrides manuales
   const formulaCols = new Set(Object.keys(compiled || {}));
   formulaCols.add('lado_mas_alto');
   formulaCols.add('calc_espada');
 
-  // 3) overrides manuales = keys existentes que difieren de base y no son fórmula
   const manualOverrides = {};
   for (const [k, v] of Object.entries(existing || {})) {
     if (formulaCols.has(k)) continue;
     const baseV = baseRow?.[k];
-
-    // comparación simple; si necesitás deep compare lo ajustamos
     if (v !== baseV) {
       manualOverrides[k] = v;
     }
   }
 
-  // 4) compongo la fila efectiva para evaluar fórmulas
   const effectiveRow = { ...baseRow, ...manualOverrides };
-
-  // 5) calcular fórmulas con dependencias
   const computed = compiled ? computeFormulaValuesWithDeps(effectiveRow, compiled) : {};
 
-  // 6) asegurar derivados “extra” si vienen
   if (rawRow && rawRow.lado_mas_alto !== undefined && rawRow.lado_mas_alto !== null) {
     computed.lado_mas_alto = rawRow.lado_mas_alto;
   }
@@ -467,7 +484,6 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
     computed.calc_espada = rawRow.calc_espada;
   }
 
-  // 7) payload final: overrides manuales + calculados
   const payload = { ...manualOverrides, ...computed };
 
   await supabasePool.query(
@@ -484,7 +500,7 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
 }
 
 // =====================
-// LECTURA "DEFINITIVA" (preproduccion_valores)
+// LECTURA "DEFINITIVA"
 // =====================
 
 async function getPreProduccionSqlRowsFromSupabase({ nv, partida } = {}) {
@@ -504,9 +520,7 @@ async function getPreProduccionSqlRowsFromSupabase({ nv, partida } = {}) {
 
   if (partida) {
     params.push(String(partida).trim());
-    where.push(
-      `COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${params.length}`
-    );
+    where.push(`COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${params.length}`);
   }
 
   if (where.length) {
@@ -519,22 +533,15 @@ async function getPreProduccionSqlRowsFromSupabase({ nv, partida } = {}) {
 
   return (rows || []).map((r) => {
     const obj = r?.data && typeof r.data === 'object' ? r.data : {};
-    // garantizamos NV en el objeto retornado
     return { ...obj, NV: r.nv };
   });
 }
 
-// Lee filas “definitivas” aplicando overlay:
-// base = preproduccion_sql.data
-// overlay = preproduccion_valores.data (manual overrides + resultados de fórmulas)
-// resultado = { ...base, ...overlay }
 async function getPreProduccionValoresRows({ nv, partida } = {}) {
   if (!supabasePool) throw new Error('SUPABASE_DB_URL no está configurado');
 
-  // 1) base cruda
   const baseRows = await getPreProduccionSqlRowsFromSupabase({ nv, partida });
 
-  // 2) overlays (valores)
   let sqlText = 'SELECT nv, data FROM preproduccion_valores';
   const where = [];
   const params = [];
@@ -549,9 +556,7 @@ async function getPreProduccionValoresRows({ nv, partida } = {}) {
 
   if (partida) {
     params.push(String(partida).trim());
-    where.push(
-      `COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${params.length}`
-    );
+    where.push(`COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${params.length}`);
   }
 
   if (where.length) {
@@ -567,31 +572,23 @@ async function getPreProduccionValoresRows({ nv, partida } = {}) {
 
   const overlayByNv = new Map();
   for (const r of overlayRows) {
-    const key =
-      r?.NV !== undefined && r?.NV !== null ? String(r.NV) : undefined;
+    const key = r?.NV !== undefined && r?.NV !== null ? String(r.NV) : undefined;
     if (key) overlayByNv.set(key, r);
   }
 
-  // 3) merge base + overlay
   const merged = baseRows.map((base) => {
-    const key =
-      base?.NV !== undefined && base?.NV !== null ? String(base.NV) : undefined;
+    const key = base?.NV !== undefined && base?.NV !== null ? String(base.NV) : undefined;
     const over = key ? overlayByNv.get(key) : null;
     return over ? { ...base, ...over } : base;
   });
 
-  // Si por algún motivo hay overlays sin base (raro), los agregamos
   for (const over of overlayRows) {
-    const key =
-      over?.NV !== undefined && over?.NV !== null ? String(over.NV) : undefined;
+    const key = over?.NV !== undefined && over?.NV !== null ? String(over.NV) : undefined;
     if (!key) continue;
-    const hasBase = baseRows.some(
-      (b) => b?.NV !== undefined && b?.NV !== null && String(b.NV) === key
-    );
+    const hasBase = baseRows.some((b) => b?.NV !== undefined && b?.NV !== null && String(b.NV) === key);
     if (!hasBase) merged.push(over);
   }
 
-  // 4) orden final
   merged.sort((a, b) => {
     const na = parseInt(a?.NV, 10);
     const nb = parseInt(b?.NV, 10);
@@ -608,7 +605,6 @@ async function getPreProduccionValoresRows({ nv, partida } = {}) {
 
 let cachedUid = null;
 
-// llamada genérica JSON-RPC a Odoo
 async function odooJsonRpc(params) {
   const payload = {
     jsonrpc: '2.0',
@@ -629,7 +625,6 @@ async function odooJsonRpc(params) {
   return response.data.result;
 }
 
-// obtener uid (login)
 async function getOdooUid() {
   if (cachedUid !== null) return cachedUid;
 
@@ -646,7 +641,6 @@ async function getOdooUid() {
   return cachedUid;
 }
 
-// wrapper execute_kw con contexto de compañía
 async function odooExecuteKw(model, method, args = [], kwargs = {}) {
   const uid = await getOdooUid();
 
@@ -677,7 +671,6 @@ async function odooExecuteKw(model, method, args = [], kwargs = {}) {
 // UTILIDADES
 // =====================
 
-// Convierte un Date (o string) a formato que Odoo espera: 'YYYY-MM-DD HH:MM:SS'
 function formatDateForOdoo(value) {
   if (!value) return null;
 
@@ -694,7 +687,6 @@ function formatDateForOdoo(value) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
-// Devuelve el lado mayor a partir de un perfil tipo "80x40", "80 X 40", etc.
 function ladoMayorDelCano(perfil) {
   if (!perfil) return null;
 
@@ -709,26 +701,15 @@ function ladoMayorDelCano(perfil) {
   return Math.max(a, b);
 }
 
-// Cálculo “seguro” de espada (best-effort).
-// IMPORTANTE: Ajustar esta lógica a tu regla real de negocio.
-// Hoy intenta extraer un número desde DATOS_Brazos (JSON o texto) si existe.
 function calcularLargoEspada({ DATOS_Brazos } = {}) {
   if (DATOS_Brazos === null || DATOS_Brazos === undefined) return null;
 
-  // Si viene número
-  if (typeof DATOS_Brazos === 'number' && Number.isFinite(DATOS_Brazos)) {
-    return DATOS_Brazos;
-  }
+  if (typeof DATOS_Brazos === 'number' && Number.isFinite(DATOS_Brazos)) return DATOS_Brazos;
 
-  // Si viene JSON en string
   if (typeof DATOS_Brazos === 'string') {
     const s = DATOS_Brazos.trim();
 
-    // intento JSON
-    if (
-      (s.startsWith('{') && s.endsWith('}')) ||
-      (s.startsWith('[') && s.endsWith(']'))
-    ) {
+    if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
       try {
         const obj = JSON.parse(s);
         const candidates = [
@@ -744,16 +725,12 @@ function calcularLargoEspada({ DATOS_Brazos } = {}) {
           const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
           if (typeof n === 'number' && Number.isFinite(n)) return n;
         }
-      } catch (e) {
+      } catch {
         // sigue abajo
       }
     }
 
-    // intento patrón en texto: "espada=123" / "espada: 123" / "largo espada 123"
-    const m =
-      s.match(/espada\s*[:=]\s*(\d+(?:[.,]\d+)?)/i) ||
-      s.match(/largo\s*espada\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i);
-
+    const m = s.match(/espada\s*[:=]\s*(\d+(?:[.,]\d+)?)/i) || s.match(/largo\s*espada\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i);
     if (m) {
       const n = parseFloat(m[1].replace(',', '.'));
       if (Number.isFinite(n)) return n;
@@ -762,7 +739,6 @@ function calcularLargoEspada({ DATOS_Brazos } = {}) {
     return null;
   }
 
-  // Si viene objeto
   if (typeof DATOS_Brazos === 'object') {
     const candidates = [
       DATOS_Brazos?.espada,
@@ -782,16 +758,11 @@ function calcularLargoEspada({ DATOS_Brazos } = {}) {
   return null;
 }
 
-// Busca o crea un cliente (res.partner) a partir de la cabecera NTASVTAS.
 async function getOrCreatePartnerFromHeader(header) {
   const cuit = header.cuit ? String(header.cuit).trim() : null;
-  const clienteCode =
-    header.cliente != null ? String(header.cliente).trim() : null;
+  const clienteCode = header.cliente != null ? String(header.cliente).trim() : null;
 
-  const nombre =
-    header.nombre && String(header.nombre).trim()
-      ? String(header.nombre).trim()
-      : 'Cliente sin nombre';
+  const nombre = header.nombre && String(header.nombre).trim() ? String(header.nombre).trim() : 'Cliente sin nombre';
 
   let domain;
 
@@ -805,9 +776,7 @@ async function getOrCreatePartnerFromHeader(header) {
     domain = [['name', '=', nombre]];
   }
 
-  const foundIds = await odooExecuteKw('res.partner', 'search', [domain], {
-    limit: 1,
-  });
+  const foundIds = await odooExecuteKw('res.partner', 'search', [domain], { limit: 1 });
 
   if (foundIds.length) {
     console.log(`Usando partner existente ${foundIds[0]} para cliente ${nombre}`);
@@ -831,10 +800,9 @@ async function getOrCreatePartnerFromHeader(header) {
   return newPartnerId;
 }
 
-// Calcular lado_mas_alto y calc_espada antes de persistir/sincronizar
 async function calculateAndAddProperties(row) {
   try {
-    const perfil = row.PARANTES_Descripcion; // Perfil
+    const perfil = row.PARANTES_Descripcion;
     row.lado_mas_alto = ladoMayorDelCano(perfil);
 
     row.calc_espada = calcularLargoEspada({
@@ -845,15 +813,11 @@ async function calculateAndAddProperties(row) {
 
     return row;
   } catch (e) {
-    console.warn(
-      `No se pudieron calcular propiedades (NV=${row?.NV}):`,
-      e.message || e
-    );
-    return row; // no rompe el flujo
+    console.warn(`No se pudieron calcular propiedades (NV=${row?.NV}):`, e.message || e);
+    return row;
   }
 }
 
-// Sincroniza un lote de filas que vienen de SQL Server a Supabase
 async function syncPreproduccionToSupabaseFromSqlRows(sqlRows) {
   if (!supabasePool || !sqlRows || !sqlRows.length) return;
 
@@ -874,30 +838,68 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// endpoint simple de prueba
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// ---------------------
-// API Sincronización Odoo
-// ---------------------
+// =====================
+// ME (privado)
+// =====================
+app.get('/api/me', requireAuth, attachRole, (req, res) => {
+  return res.json({
+    user: { id: req.user.id, email: req.user.email },
+    role: req.role || 'viewer',
+  });
+});
 
-app.post('/api/sync/order-from-sql', async (req, res) => {
+// =====================
+// PUBLIC (solo para modo PDF link)
+// =====================
+
+// Lectura pública de fórmulas (solo si el PdfLinkView lo requiere)
+app.get('/api/public/formulas', async (_req, res) => {
+  try {
+    const formulas = await getAllColumnFormulas();
+    return res.json({ formulas });
+  } catch (err) {
+    console.error('Error en /api/public/formulas (GET):', err);
+    return res.status(500).json({
+      error: 'Error obteniendo fórmulas',
+      details: err.message || String(err),
+    });
+  }
+});
+
+// Lectura pública de "valores definitivos" (para generar PDF por link)
+app.get('/api/public/pre-produccion-valores', async (req, res) => {
+  const { nv, partida } = req.query;
+
+  try {
+    const rows = await getPreProduccionValoresRows({ nv, partida });
+    return res.json({ count: rows.length, rows });
+  } catch (err) {
+    console.error('Error en /api/public/pre-produccion-valores:', err);
+    return res.status(500).json({
+      error: 'Error interno obteniendo Pre_Produccion (valores)',
+      details: err.message || String(err),
+    });
+  }
+});
+
+// ---------------------
+// API Sincronización Odoo (privada)
+// ---------------------
+app.post('/api/sync/order-from-sql', requireAuth, attachRole, requireRole(['admin']), async (req, res) => {
   const { idpedido, partner_id } = req.body;
 
   if (!idpedido) {
-    return res.status(400).json({
-      error: 'Falta parámetro: idpedido es requerido',
-    });
+    return res.status(400).json({ error: 'Falta parámetro: idpedido es requerido' });
   }
 
   try {
     const header = await getNtavHeader(idpedido);
     if (!header) {
-      return res.status(404).json({
-        error: `No se encontró NTASVTAS.idpedido = ${idpedido}`,
-      });
+      return res.status(404).json({ error: `No se encontró NTASVTAS.idpedido = ${idpedido}` });
     }
 
     let partnerIdFinal = partner_id;
@@ -912,9 +914,7 @@ app.post('/api/sync/order-from-sql', async (req, res) => {
       });
     }
 
-    const clientOrderRefParts = [header.tipo || '', header.sucursal || '', header.numero || ''].filter(
-      (p) => p !== ''
-    );
+    const clientOrderRefParts = [header.tipo || '', header.sucursal || '', header.numero || ''].filter((p) => p !== '');
     const clientOrderRef = clientOrderRefParts.join('-');
 
     const orderVals = {
@@ -944,35 +944,26 @@ app.post('/api/sync/order-from-sql', async (req, res) => {
       let productId = null;
 
       if (productoCodigo) {
-        const idsByCode = await odooExecuteKw(
-          'product.product',
-          'search',
-          [[['default_code', '=', productoCodigo]]],
-          { limit: 1 }
-        );
+        const idsByCode = await odooExecuteKw('product.product', 'search', [[['default_code', '=', productoCodigo]]], {
+          limit: 1,
+        });
         if (idsByCode.length) productId = idsByCode[0];
       }
 
       if (!productId && descripcion) {
-        const idsByName = await odooExecuteKw(
-          'product.product',
-          'search',
-          [[['name', 'ilike', descripcion]]],
-          { limit: 1 }
-        );
+        const idsByName = await odooExecuteKw('product.product', 'search', [[['name', 'ilike', descripcion]]], {
+          limit: 1,
+        });
         if (idsByName.length) productId = idsByName[0];
       }
 
       if (!productId) {
-        console.warn(
-          `Producto no encontrado en Odoo, se salta la línea. COD=${productoCodigo}, DESC=${descripcion}`
-        );
+        console.warn(`Producto no encontrado en Odoo, se salta la línea. COD=${productoCodigo}, DESC=${descripcion}`);
         missingProducts.push({ codigo: productoCodigo, descripcion });
         continue;
       }
 
-      const priceUnit =
-        (line.preneto && line.preneto !== 0 ? line.preneto : line.precio) || 0;
+      const priceUnit = (line.preneto && line.preneto !== 0 ? line.preneto : line.precio) || 0;
       const discount = line.bonific || 0;
       const qty = line.cantidad || 0;
 
@@ -995,9 +986,7 @@ app.post('/api/sync/order-from-sql', async (req, res) => {
     const numero = header.numero;
     if (numero != null) {
       const portonDomain = [['x_nota_de_venta', '=', numero]];
-      const portonIds = await odooExecuteKw('x_dflex.porton', 'search', [portonDomain], {
-        limit: 1,
-      });
+      const portonIds = await odooExecuteKw('x_dflex.porton', 'search', [portonDomain], { limit: 1 });
 
       if (portonIds.length) {
         await odooExecuteKw('x_dflex.porton', 'write', [
@@ -1009,9 +998,7 @@ app.post('/api/sync/order-from-sql', async (req, res) => {
         ]);
         console.log(`Portón ${portonIds[0]} vinculado al pedido ${orderId}`);
       } else {
-        console.log(
-          `No se encontró x_dflex.porton con x_nota_de_venta = ${numero} (no se vincula)`
-        );
+        console.log(`No se encontró x_dflex.porton con x_nota_de_venta = ${numero} (no se vincula)`);
       }
     }
 
@@ -1034,26 +1021,20 @@ app.post('/api/sync/order-from-sql', async (req, res) => {
 });
 
 // ---------------------
-// API Pre_Produccion
+// API Pre_Produccion (privada)
 // ---------------------
-
-// Lee de SQL, sincroniza con Supabase y devuelve filas crudas (para la vista "SQL")
-app.get('/api/pre-produccion', async (req, res) => {
+app.get('/api/pre-produccion', requireAuth, attachRole, async (req, res) => {
   const { nv } = req.query;
 
   try {
     const rows = await getPreProduccionRows(nv);
 
-    // Sincronizar con Supabase pero sin romper la respuesta si falla
     try {
       if (rows.length && supabasePool) {
         await syncPreproduccionToSupabaseFromSqlRows(rows);
       }
     } catch (syncErr) {
-      console.error(
-        'Error sincronizando Pre_Produccion con Supabase:',
-        syncErr.message || syncErr
-      );
+      console.error('Error sincronizando Pre_Produccion con Supabase:', syncErr.message || syncErr);
     }
 
     return res.json({ count: rows.length, rows });
@@ -1066,9 +1047,7 @@ app.get('/api/pre-produccion', async (req, res) => {
   }
 });
 
-// Lee “definitivo” (merge base + valores)
-// Soporta: ?nv= y/o ?partida=
-app.get('/api/pre-produccion-valores', async (req, res) => {
+app.get('/api/pre-produccion-valores', requireAuth, attachRole, async (req, res) => {
   const { nv, partida } = req.query;
 
   try {
@@ -1084,10 +1063,9 @@ app.get('/api/pre-produccion-valores', async (req, res) => {
 });
 
 // ---------------------
-// API Fórmulas (Supabase)
+// API Fórmulas (privada)
 // ---------------------
-
-app.get('/api/formulas', async (req, res) => {
+app.get('/api/formulas', requireAuth, attachRole, async (_req, res) => {
   try {
     const formulas = await getAllColumnFormulas();
     return res.json({ formulas });
@@ -1100,7 +1078,7 @@ app.get('/api/formulas', async (req, res) => {
   }
 });
 
-app.post('/api/formulas', async (req, res) => {
+app.post('/api/formulas', requireAuth, attachRole, requireRole(['admin', 'formula_editor']), async (req, res) => {
   const { column_name, expression } = req.body || {};
   if (!column_name) return res.status(400).json({ error: 'Falta column_name' });
 
@@ -1117,97 +1095,96 @@ app.post('/api/formulas', async (req, res) => {
 });
 
 // ---------------------
-// API Pre_Produccion (valores) - Bulk Update (única definición)
+// Bulk Update (privado)
 // ---------------------
-// Guarda ediciones manuales sobre preproduccion_valores.data (merge JSONB)
-// Body: { updates: [{ nv: number, changes: { COL: value, ... } }, ...] }
-app.post('/api/pre-produccion-valores/bulk-update', async (req, res) => {
-  if (!supabasePool) {
-    return res.status(500).json({ error: 'SUPABASE_DB_URL no está configurado' });
-  }
-
-  const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
-  if (!updates.length) {
-    return res.status(400).json({ error: 'Falta updates[] en el body' });
-  }
-
-  function sanitizeChanges(changes) {
-    const out = {};
-    if (!changes || typeof changes !== 'object') return out;
-
-    for (const [k, v] of Object.entries(changes)) {
-      if (!k || typeof k !== 'string') continue;
-      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
-      if (k.length > 200) continue;
-      out[k] = v;
-    }
-    return out;
-  }
-
-  const client = await supabasePool.connect();
-
-  try {
-    await client.query('BEGIN');
-
-    let applied = 0;
-    let skipped = 0;
-
-    for (const u of updates) {
-      const nvParsed = parseInt(u?.nv, 10);
-      if (!Number.isFinite(nvParsed)) {
-        skipped += 1;
-        continue;
-      }
-
-      const changes = sanitizeChanges(u?.changes);
-      if (!Object.keys(changes).length) {
-        skipped += 1;
-        continue;
-      }
-
-      await client.query(
-        `
-          INSERT INTO preproduccion_valores (nv, data)
-          VALUES ($1, $2::jsonb)
-          ON CONFLICT (nv)
-          DO UPDATE SET
-            data = COALESCE(preproduccion_valores.data, '{}'::jsonb) || EXCLUDED.data,
-            updated_at = now()
-        `,
-        [nvParsed, JSON.stringify(changes)]
-      );
-
-      applied += 1;
+app.post(
+  '/api/pre-produccion-valores/bulk-update',
+  requireAuth,
+  attachRole,
+  requireRole(['admin', 'data_editor']),
+  async (req, res) => {
+    if (!supabasePool) {
+      return res.status(500).json({ error: 'SUPABASE_DB_URL no está configurado' });
     }
 
-    await client.query('COMMIT');
+    const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+    if (!updates.length) {
+      return res.status(400).json({ error: 'Falta updates[] en el body' });
+    }
 
-    return res.json({
-      success: true,
-      applied,
-      skipped,
-    });
-  } catch (err) {
+    function sanitizeChanges(changes) {
+      const out = {};
+      if (!changes || typeof changes !== 'object') return out;
+
+      for (const [k, v] of Object.entries(changes)) {
+        if (!k || typeof k !== 'string') continue;
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        if (k.length > 200) continue;
+        out[k] = v;
+      }
+      return out;
+    }
+
+    const client = await supabasePool.connect();
+
     try {
-      await client.query('ROLLBACK');
-    } catch (e) {
-      // ignore
-    }
+      await client.query('BEGIN');
 
-    console.error('Error en /api/pre-produccion-valores/bulk-update:', err);
-    return res.status(500).json({
-      error: 'Error interno guardando cambios',
-      details: err.message || String(err),
-    });
-  } finally {
-    client.release();
+      let applied = 0;
+      let skipped = 0;
+
+      for (const u of updates) {
+        const nvParsed = parseInt(u?.nv, 10);
+        if (!Number.isFinite(nvParsed)) {
+          skipped += 1;
+          continue;
+        }
+
+        const changes = sanitizeChanges(u?.changes);
+        if (!Object.keys(changes).length) {
+          skipped += 1;
+          continue;
+        }
+
+        await client.query(
+          `
+            INSERT INTO preproduccion_valores (nv, data)
+            VALUES ($1, $2::jsonb)
+            ON CONFLICT (nv)
+            DO UPDATE SET
+              data = COALESCE(preproduccion_valores.data, '{}'::jsonb) || EXCLUDED.data,
+              updated_at = now()
+          `,
+          [nvParsed, JSON.stringify(changes)]
+        );
+
+        applied += 1;
+      }
+
+      await client.query('COMMIT');
+
+      return res.json({ success: true, applied, skipped });
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // ignore
+      }
+
+      console.error('Error en /api/pre-produccion-valores/bulk-update:', err);
+      return res.status(500).json({
+        error: 'Error interno guardando cambios',
+        details: err.message || String(err),
+      });
+    } finally {
+      client.release();
+    }
   }
-});
+);
 
 // =====================
 // ARRANCAR SERVIDOR
 // =====================
-
 app.listen(PORT, () => {
   console.log(`Dflex sync backend escuchando en puerto ${PORT}`);
 });

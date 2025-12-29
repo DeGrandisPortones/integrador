@@ -131,14 +131,20 @@ function buildPageSize(firstY, stepY, minY) {
 }
 
 // =====================
-// Fetch SIEMPRE desde pre-produccion-valores
+// Fetch: privado si hay token, público si NO hay token
 // =====================
-async function fetchValoresByPartida(partida) {
+function getValoresEndpoint(accessToken) {
+  return accessToken ? '/api/pre-produccion-valores' : '/api/public/pre-produccion-valores';
+}
+
+async function fetchValoresByPartida(partida, accessToken) {
   const p = toStr(partida);
   if (!p) return [];
 
-  const url = `${API_BASE_URL}/api/pre-produccion-valores?partida=${encodeURIComponent(p)}`;
-  const res = await fetch(url);
+  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?partida=${encodeURIComponent(p)}`;
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+
+  const res = await fetch(url, headers ? { headers } : undefined);
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
@@ -152,11 +158,11 @@ async function fetchValoresByPartida(partida) {
 // =====================
 // PDF builder (EXPORTADO)
 // =====================
-export async function generatePdfCortePlegado(partida, rows) {
+export async function generatePdfCortePlegado(partida, rows, accessToken) {
   const p = toStr(partida);
   if (!p) throw new Error('Partida vacía');
 
-  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p);
+  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p, accessToken);
   if (!safeRows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
 
   const base = import.meta.env.BASE_URL || '/';
@@ -226,8 +232,8 @@ export async function generatePdfCortePlegado(partida, rows) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-export async function generatePdfCortePlegadoByPartida(partida) {
-  return generatePdfCortePlegado(partida);
+export async function generatePdfCortePlegadoByPartida(partida, accessToken) {
+  return generatePdfCortePlegado(partida, null, accessToken);
 }
 
 export default {

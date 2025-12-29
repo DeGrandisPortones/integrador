@@ -79,7 +79,6 @@ const POS = {
   scheme: {
     dintelAncho: { x: 192.5, y: 460.0, size: 10, maxWidth: 60 },
     alto: { x: 25.0, y: 345.5, size: 10, maxWidth: 60 },
-    // altoMenos10 imprime PIERNAS_Altura (ver lógica abajo)
     altoMenos10: { x: 75.0, y: 345.5, size: 10, maxWidth: 60 },
     dintelMenos: { x: 193.0, y: 245.0, size: 10, maxWidth: 60 },
   },
@@ -153,7 +152,6 @@ function getAltoMM(row) {
   return toMM(row.PIERNAS_Altura);
 }
 
-// ✅ CAMBIO: también *100 acá (como pediste)
 function getPiernasAlturaMM(row) {
   const base = toMM(
     row.PIERNAS_Altura ??
@@ -163,6 +161,7 @@ function getPiernasAlturaMM(row) {
       row.PIERNAS_ALTURA ??
       row.piernas_altura
   );
+  return base;
 }
 
 function calc244(row) {
@@ -182,29 +181,34 @@ function splitTwoCells(text) {
 }
 
 // =====================
-// Fetch SIEMPRE desde pre-produccion-valores
+// Fetch: privado si hay token, público si NO hay token
 // =====================
-async function fetchValores({ partida, nv }) {
+function getValoresEndpoint(accessToken) {
+  return accessToken ? '/api/pre-produccion-valores' : '/api/public/pre-produccion-valores';
+}
+
+async function fetchValores({ partida, nv }, accessToken) {
   const params = new URLSearchParams();
   if (toStr(partida)) params.set('partida', toStr(partida));
   if (toStr(nv)) params.set('nv', toStr(nv));
 
   const qs = params.toString() ? `?${params.toString()}` : '';
-  const url = `${API_BASE_URL}/api/pre-produccion-valores${qs}`;
+  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}${qs}`;
 
-  const res = await fetch(url);
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+  const res = await fetch(url, headers ? { headers } : undefined);
+
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
   }
 
   const data = await res.json();
-  const rows = Array.isArray(data?.rows) ? data.rows : [];
-  return rows;
+  return Array.isArray(data?.rows) ? data.rows : [];
 }
 
 // =====================
-// Builder principal (recibe rows YA calculados)
+// Builder principal
 // =====================
 export async function generatePdfArmadoPrimario(partida, rows) {
   const base = import.meta.env.BASE_URL || '/';
@@ -265,8 +269,6 @@ export async function generatePdfArmadoPrimario(partida, rows) {
     // -------- Esquema (medidas)
     const dintelAncho = getDintelAnchoMM(r);
     const alto = getAltoMM(r);
-
-    // ✅ piernasAltura YA viene *100 por getPiernasAlturaMM()
     const piernasAltura = getPiernasAlturaMM(r);
 
     drawFittedText(
@@ -283,7 +285,6 @@ export async function generatePdfArmadoPrimario(partida, rows) {
       maxWidth: POS.scheme.alto.maxWidth,
     });
 
-    // ✅ altoMenos10 imprime PIERNAS_Altura (ya *100)
     drawFittedText(
       page,
       font,
@@ -312,7 +313,6 @@ export async function generatePdfArmadoPrimario(partida, rows) {
       maxWidth: POS.paso1.piernasTipo.maxWidth,
     });
 
-    // ✅ también queda *100 porque usa piernasAltura
     drawFittedText(
       page,
       font,
@@ -464,26 +464,25 @@ export async function generatePdfArmadoPrimario(partida, rows) {
 }
 
 // =====================
-// Wrappers que usa ViewPdf (SIEMPRE desde valores)
+// Wrappers que usa ViewPdf / PdfLinkView
 // =====================
-export async function generatePdfArmPrimarioByPartida(partida) {
+export async function generatePdfArmPrimarioByPartida(partida, accessToken) {
   const p = toStr(partida);
   if (!p) throw new Error('Partida vacía');
-  const rows = await fetchValores({ partida: p });
+  const rows = await fetchValores({ partida: p }, accessToken);
   if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
   return generatePdfArmadoPrimario(p, rows);
 }
 
-export async function generatePdfArmPrimarioByNv(nv) {
+export async function generatePdfArmPrimarioByNv(nv, accessToken) {
   const n = toStr(nv);
   if (!n) throw new Error('NV vacío');
-  const rows = await fetchValores({ nv: n });
+  const rows = await fetchValores({ nv: n }, accessToken);
   if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para NV=${n}`);
   const p = toStr(rows[0]?.PARTIDA);
   return generatePdfArmadoPrimario(p || undefined, rows);
 }
 
-// Default export flexible (por si querés importarlo como objeto)
 export default {
   generatePdfArmadoPrimario,
   generatePdfArmPrimarioByPartida,

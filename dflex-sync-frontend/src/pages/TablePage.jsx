@@ -15,7 +15,11 @@ export default function TablePage({
   getDisplayValue,
   onSaveChanges,
   totalRows,
+  permissions,
 }) {
+  const canEditData = !!permissions?.canEditData;
+  const canEditFormulas = !!permissions?.canEditFormulas;
+
   // =========================
   // Ediciones manuales
   // =========================
@@ -28,12 +32,18 @@ export default function TablePage({
   }
 
   function handleCellChange(row, rowIndex, col, newValue) {
+    if (!canEditData) return;
     const key = getRowKey(row, rowIndex);
     if (!editedRef.current[key]) editedRef.current[key] = {};
     editedRef.current[key][col] = newValue;
   }
 
   async function handleSaveClick() {
+    if (!canEditData) {
+      window.alert('No tenés permisos para guardar cambios.');
+      return;
+    }
+
     const changes = editedRef.current || {};
     const keys = Object.keys(changes);
 
@@ -68,9 +78,6 @@ export default function TablePage({
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [colSearch, setColSearch] = useState('');
 
-  // visibleCols:
-  // - null => “todas las columnas”
-  // - array => “solo estas columnas”
   const [visibleCols, setVisibleCols] = useState(() => {
     try {
       const raw = localStorage.getItem(LS_VISIBLE_COLS_KEY);
@@ -82,7 +89,6 @@ export default function TablePage({
     }
   });
 
-  // Persistir cambios
   useEffect(() => {
     try {
       if (visibleCols === null) {
@@ -95,7 +101,6 @@ export default function TablePage({
     }
   }, [visibleCols]);
 
-  // Si cambian las columnas disponibles, limpiamos las que ya no existan
   useEffect(() => {
     if (!Array.isArray(visibleCols)) return;
     const available = new Set(columns || []);
@@ -107,9 +112,7 @@ export default function TablePage({
   const filteredColumnsForMenu = useMemo(() => {
     const q = (colSearch || '').trim().toLowerCase();
     if (!q) return columns || [];
-    return (columns || []).filter((c) =>
-      String(c).toLowerCase().includes(q)
-    );
+    return (columns || []).filter((c) => String(c).toLowerCase().includes(q));
   }, [columns, colSearch]);
 
   const effectiveColumns = useMemo(() => {
@@ -129,15 +132,12 @@ export default function TablePage({
 
       const next = [...set];
 
-      // Si dejó todas, guardamos como null (más simple)
       if (next.length === all.length) return null;
 
-      // No dejamos 0 columnas (tabla vacía); fallback a NV si existe
       if (!next.length) {
         return all.includes('NV') ? ['NV'] : all.slice(0, 1);
       }
 
-      // Mantener orden original
       return all.filter((c) => next.includes(c));
     });
   }
@@ -150,7 +150,6 @@ export default function TablePage({
     const all = columns || [];
     const minimal = [];
 
-    // Elegí un set mínimo razonable (podés ajustar)
     ['NV', 'PARTIDA', 'PARANTES_Descripcion', 'Largo_Parantes', 'DATOS_Brazos', 'lado_mas_alto', 'calc_espada'].forEach(
       (k) => {
         if (all.includes(k)) minimal.push(k);
@@ -215,9 +214,7 @@ export default function TablePage({
     <>
       {loading && <div className="info">Cargando datos...</div>}
 
-      {!loading && !hasData && (
-        <div className="info">No hay datos para mostrar.</div>
-      )}
+      {!loading && !hasData && <div className="info">No hay datos para mostrar.</div>}
 
       {hasData && (
         <>
@@ -231,13 +228,13 @@ export default function TablePage({
             }}
           >
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button
-                type="button"
-                className="save-btn"
-                onClick={handleSaveClick}
-              >
-                Guardar cambios
-              </button>
+              {canEditData ? (
+                <button type="button" className="save-btn" onClick={handleSaveClick}>
+                  Guardar cambios
+                </button>
+              ) : (
+                <span className="hint">Modo solo lectura</span>
+              )}
 
               <button
                 type="button"
@@ -281,18 +278,10 @@ export default function TablePage({
                 Página <b>{page}</b> / {totalPages}
               </span>
 
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={page >= totalPages}
-              >
+              <button type="button" onClick={goNext} disabled={page >= totalPages}>
                 {'>'}
               </button>
-              <button
-                type="button"
-                onClick={goLast}
-                disabled={page >= totalPages}
-              >
+              <button type="button" onClick={goLast} disabled={page >= totalPages}>
                 {'>>'}
               </button>
             </div>
@@ -352,20 +341,11 @@ export default function TablePage({
                 }}
               >
                 {filteredColumnsForMenu.map((col) => {
-                  const checked = Array.isArray(visibleCols)
-                    ? visibleCols.includes(col)
-                    : true; // null => todas
+                  const checked = Array.isArray(visibleCols) ? visibleCols.includes(col) : true;
 
                   return (
-                    <label
-                      key={`colpick-${col}`}
-                      style={{ display: 'flex', gap: 8, alignItems: 'center' }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleColumn(col)}
-                      />
+                    <label key={`colpick-${col}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleColumn(col)} />
                       <span style={{ fontFamily: 'monospace' }}>{col}</span>
                     </label>
                   );
@@ -377,7 +357,6 @@ export default function TablePage({
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
-                {/* fila de fórmulas */}
                 <tr>
                   {effectiveColumns.map((col) => (
                     <th key={`${col}-formula`}>
@@ -386,14 +365,18 @@ export default function TablePage({
                         className="formula-input-header"
                         type="text"
                         defaultValue={formulas[col] ?? ''}
+                        disabled={!canEditFormulas}
                         ref={(el) => {
                           if (!formulaInputRefs.current) {
                             formulaInputRefs.current = {};
                           }
                           formulaInputRefs.current[col] = el;
                         }}
-                        onKeyDown={(e) => handleFormulaKeyDown(e, col)}
-                        placeholder="fórmula"
+                        onKeyDown={(e) => {
+                          if (!canEditFormulas) return;
+                          handleFormulaKeyDown(e, col);
+                        }}
+                        placeholder={canEditFormulas ? 'fórmula' : 'solo lectura'}
                       />
                       {formulaErrors[col] && (
                         <div className="col-error" title={formulaErrors[col]}>
@@ -404,7 +387,6 @@ export default function TablePage({
                   ))}
                 </tr>
 
-                {/* nombres de columnas */}
                 <tr>
                   {effectiveColumns.map((col) => (
                     <th key={col}>{col}</th>
@@ -422,10 +404,7 @@ export default function TablePage({
                       {effectiveColumns.map((col) => {
                         const edited =
                           editedRef.current?.[rowKey] &&
-                          Object.prototype.hasOwnProperty.call(
-                            editedRef.current[rowKey],
-                            col
-                          )
+                          Object.prototype.hasOwnProperty.call(editedRef.current[rowKey], col)
                             ? editedRef.current[rowKey][col]
                             : undefined;
 
@@ -434,14 +413,9 @@ export default function TablePage({
                             <input
                               className="cell-input"
                               key={`cell-${rowKey}-${col}-${formulas[col] ?? ''}`}
-                              defaultValue={
-                                edited !== undefined
-                                  ? edited
-                                  : getDisplayValue(row, col)
-                              }
-                              onChange={(e) =>
-                                handleCellChange(row, globalIndex, col, e.target.value)
-                              }
+                              defaultValue={edited !== undefined ? edited : getDisplayValue(row, col)}
+                              disabled={!canEditData}
+                              onChange={(e) => handleCellChange(row, globalIndex, col, e.target.value)}
                             />
                           </td>
                         );

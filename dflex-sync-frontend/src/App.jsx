@@ -1,8 +1,13 @@
+// src/App.jsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 import TablePage from './pages/TablePage';
 import FormulasPage from './pages/FormulasPage';
 import ImportPage from './pages/ImportPage';
 import ViewPdf from './pages/ViewPdf';
+import PdfLinkView from './pages/PdfLinkView';
+import LoginPage from './pages/LoginPage.jsx';
+
+import { useAuth } from './auth/AuthProvider.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -10,21 +15,63 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000
 const LS_CURRENT_PAGE = 'dflex.currentPage';
 const LS_VISIBLE_COLUMNS = 'dflex.visibleColumns.v1';
 
-// ==== helpers de backend ====
-async function fetchPreProduccion(nv) {
+// ===== helpers =====
+function toStr(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).trim();
+}
+
+function getPdfTipoFromLocation() {
+  const { pathname, search } = window.location;
+
+  let tipoFromPath = '';
+  const m = pathname.match(/^\/pdfs\/([^/]+)\/?$/i);
+  if (m && m[1]) tipoFromPath = toStr(m[1]).toLowerCase();
+
+  const qs = new URLSearchParams(search);
+  const tipoFromQuery = toStr(qs.get('pdf')).toLowerCase();
+
+  return tipoFromPath || tipoFromQuery;
+}
+
+// Detecta si el usuario vino por link "directo" para generar/mostrar PDF
+function isPdfLinkMode() {
+  const { pathname, search } = window.location;
+  const qs = new URLSearchParams(search);
+
+  const tipo = getPdfTipoFromLocation();
+
+  const hasTipoByQuery = (qs.get('pdf') || '').trim().length > 0;
+  const hasTipoByPath = /^\/pdfs\/[^/]+\/?$/i.test(pathname);
+
+  const hasPartida = (qs.get('partida') || '').trim().length > 0;
+  const hasNv = (qs.get('nv') || '').trim().length > 0;
+
+  // Para arm-primario permitimos nv o partida
+  if (tipo === 'arm-primario') {
+    return (hasTipoByQuery || hasTipoByPath) && (hasNv || hasPartida);
+  }
+
+  // Para el resto: requiere partida
+  return (hasTipoByQuery || hasTipoByPath) && hasPartida;
+}
+
+// ==== helpers de backend (ahora con token) ====
+async function fetchPreProduccion(nv, accessToken) {
   const params = new URLSearchParams();
   if (nv) params.set('nv', nv);
 
   const qs = params.toString() ? `?${params.toString()}` : '';
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 
-  const syncRes = await fetch(`${API_BASE_URL}/api/pre-produccion${qs}`);
+  const syncRes = await fetch(`${API_BASE_URL}/api/pre-produccion${qs}`, { headers });
   if (!syncRes.ok) {
     throw new Error(`Error HTTP ${syncRes.status}`);
   }
   const syncData = await syncRes.json();
 
   try {
-    const valsRes = await fetch(`${API_BASE_URL}/api/pre-produccion-valores${qs}`);
+    const valsRes = await fetch(`${API_BASE_URL}/api/pre-produccion-valores${qs}`, { headers });
     if (!valsRes.ok) throw new Error(`Error HTTP ${valsRes.status}`);
     const valsData = await valsRes.json();
     if (Array.isArray(valsData.rows)) return valsData;
@@ -35,16 +82,20 @@ async function fetchPreProduccion(nv) {
   return syncData;
 }
 
-async function fetchFormulasFromBackend() {
-  const res = await fetch(`${API_BASE_URL}/api/formulas`);
+async function fetchFormulasFromBackend(accessToken) {
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  const res = await fetch(`${API_BASE_URL}/api/formulas`, { headers });
   if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
   return res.json();
 }
 
-async function saveFormulaToBackend(columnName, expression) {
+async function saveFormulaToBackend(columnName, expression, accessToken) {
   const res = await fetch(`${API_BASE_URL}/api/formulas`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify({ column_name: columnName, expression }),
   });
 
@@ -56,6 +107,34 @@ async function saveFormulaToBackend(columnName, expression) {
 }
 
 export default function App() {
+  // App solo decide si es modo link público o app normal.
+  // Este hook siempre se ejecuta igual.
+  const linkMode = useMemo(() => isPdfLinkMode(), []);
+  return linkMode ? <PdfLinkView /> : <AuthGate />;
+}
+
+function AuthGate() {
+  // AuthGate SOLO maneja auth. Nada de useMemo/useState extra.
+  const { session, loading: authLoading, signOut } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="page">
+        <div className="info">Cargando sesión…</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginPage />;
+  }
+
+  return <MainApp session={session} signOut={signOut} />;
+}
+
+function MainApp({ session, signOut }) {
+  const accessToken = session?.access_token || null;
+
   // ===== current page (persistido) =====
   const [currentPage, setCurrentPage] = useState(() => {
     const saved = localStorage.getItem(LS_CURRENT_PAGE);
@@ -72,7 +151,6 @@ export default function App() {
   const [formulaBackendError, setFormulaBackendError] = useState('');
 
   // ===== visible columns (persistido) =====
-  // null => “no configurado todavía”, por defecto mostramos todo.
   const [visibleColumns, setVisibleColumns] = useState(() => {
     try {
       const raw = localStorage.getItem(LS_VISIBLE_COLUMNS);
@@ -87,12 +165,10 @@ export default function App() {
   const nvInputRef = useRef(null);
   const formulaInputRefs = useRef({});
 
-  // Persist current page
   useEffect(() => {
     localStorage.setItem(LS_CURRENT_PAGE, currentPage);
   }, [currentPage]);
 
-  // Persist visible columns
   useEffect(() => {
     if (!visibleColumns) return;
     try {
@@ -102,18 +178,18 @@ export default function App() {
     }
   }, [visibleColumns]);
 
-  // ===== carga inicial =====
+  // ✅ al montar (ya hay sesión garantizada)
   useEffect(() => {
     loadData();
     loadFormulas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [accessToken]);
 
   async function loadData(nv) {
     try {
       setLoading(true);
       setError('');
-      const data = await fetchPreProduccion(nv);
+      const data = await fetchPreProduccion(nv, accessToken);
       setRows(data.rows || []);
     } catch (err) {
       console.error(err);
@@ -126,7 +202,7 @@ export default function App() {
   async function loadFormulas() {
     try {
       setFormulaBackendError('');
-      const data = await fetchFormulasFromBackend();
+      const data = await fetchFormulasFromBackend(accessToken);
       const map = {};
       (data.formulas || []).forEach((f) => {
         map[f.column_name] = f.expression || '';
@@ -146,7 +222,6 @@ export default function App() {
 
   const hasData = rows && rows.length > 0;
 
-  // Columns robustas (unión de keys + formulas + forzadas)
   const allColumns = useMemo(() => {
     const set = new Set();
 
@@ -161,21 +236,16 @@ export default function App() {
     return Array.from(set);
   }, [hasData, rows, formulas]);
 
-  // Columnas que realmente mostramos (según config guardada)
   const columnsToShow = useMemo(() => {
     if (!visibleColumns || !Array.isArray(visibleColumns) || !visibleColumns.length) {
       return allColumns;
     }
 
-    // Mantener solo las que existen
     const allowed = new Set(allColumns);
     const filtered = visibleColumns.filter((c) => allowed.has(c));
-
-    // Si el user guardó algo inválido y queda vacío, fallback
     return filtered.length ? filtered : allColumns;
   }, [allColumns, visibleColumns]);
 
-  // ===== compilar fórmulas =====
   const { compiledFormulas, formulaErrors } = useMemo(() => {
     const compiled = {};
     const errors = {};
@@ -208,7 +278,6 @@ export default function App() {
     return { compiledFormulas: compiled, formulaErrors: errors };
   }, [formulas]);
 
-  // ===== evaluar valor mostrado =====
   function getDisplayValue(row, targetCol) {
     const cache = {};
     const visiting = new Set();
@@ -307,21 +376,17 @@ export default function App() {
 
     setFormulas((current) => ({ ...current, [col]: draft }));
 
-    saveFormulaToBackend(col, draft).catch((err) => {
+    saveFormulaToBackend(col, draft, accessToken).catch((err) => {
       console.error('Error guardando fórmula en backend:', err);
-      window.alert(
-        'Error guardando la fórmula en la base de datos:\n' + (err.message || String(err))
-      );
+      window.alert('Error guardando la fórmula:\n' + (err.message || String(err)));
     });
   }
 
-  // Hook para que TablePage te avise cuando el usuario cambie el set de columnas visibles
   function handleChangeVisibleColumns(nextCols) {
     if (!Array.isArray(nextCols)) return;
     setVisibleColumns(nextCols);
   }
 
-  // Permite resetear “ver todo”
   function handleResetVisibleColumns() {
     setVisibleColumns(null);
     try {
@@ -357,7 +422,10 @@ export default function App() {
 
     const res = await fetch(`${API_BASE_URL}/api/pre-produccion-valores/bulk-update`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
       body: JSON.stringify({ updates }),
     });
 
@@ -372,39 +440,45 @@ export default function App() {
       <header className="header">
         <h1>Pre Producción – NV / Portones</h1>
 
-        <nav className="nav">
-          <button
-            type="button"
-            className={currentPage === 'tabla' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setCurrentPage('tabla')}
-          >
-            Tabla Pre-Producción
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <nav className="nav">
+            <button
+              type="button"
+              className={currentPage === 'tabla' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentPage('tabla')}
+            >
+              Tabla Pre-Producción
+            </button>
 
-          <button
-            type="button"
-            className={currentPage === 'formulas' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setCurrentPage('formulas')}
-          >
-            Fórmulas
-          </button>
+            <button
+              type="button"
+              className={currentPage === 'formulas' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentPage('formulas')}
+            >
+              Fórmulas
+            </button>
 
-          <button
-            type="button"
-            className={currentPage === 'pdf' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setCurrentPage('pdf')}
-          >
-            PDFs por Partida
-          </button>
+            <button
+              type="button"
+              className={currentPage === 'pdf' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentPage('pdf')}
+            >
+              PDFs por Partida
+            </button>
 
-          <button
-            type="button"
-            className={currentPage === 'import' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setCurrentPage('import')}
-          >
-            Importar Excel
+            <button
+              type="button"
+              className={currentPage === 'import' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentPage('import')}
+            >
+              Importar Excel
+            </button>
+          </nav>
+
+          <button type="button" className="btn-secondary" onClick={() => signOut()}>
+            Cerrar sesión
           </button>
-        </nav>
+        </div>
 
         {currentPage === 'tabla' && (
           <form className="search-form" onSubmit={handleSearch}>
@@ -426,7 +500,6 @@ export default function App() {
               Limpiar
             </button>
 
-            {/* Opcional: botón para resetear config columnas */}
             <button
               type="button"
               onClick={handleResetVisibleColumns}
@@ -446,9 +519,7 @@ export default function App() {
       {currentPage === 'tabla' && (
         <TablePage
           rows={rows}
-          // 👇 acá ya le pasamos las columnas filtradas
           columns={columnsToShow}
-          // 👇 y también todas (para armar el selector en TablePage)
           allColumns={allColumns}
           visibleColumns={visibleColumns}
           onChangeVisibleColumns={handleChangeVisibleColumns}
@@ -466,7 +537,6 @@ export default function App() {
       {currentPage === 'formulas' && (
         <FormulasPage
           hasData={hasData}
-          // si querés que FormulasPage respete la misma selección:
           columns={columnsToShow}
           allColumns={allColumns}
           visibleColumns={visibleColumns}

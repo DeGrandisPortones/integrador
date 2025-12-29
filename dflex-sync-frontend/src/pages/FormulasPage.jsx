@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
-// Helper para guardar fórmula en el backend (Supabase)
-async function saveFormulaToBackend(columnName, expression) {
+async function saveFormulaToBackend(columnName, expression, authHeader) {
   const res = await fetch(`${API_BASE_URL}/api/formulas`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(authHeader || {}) },
     body: JSON.stringify({ column_name: columnName, expression }),
   });
 
@@ -18,18 +16,18 @@ async function saveFormulaToBackend(columnName, expression) {
   return res.json();
 }
 
-export default function FormulasPage({ hasData, columns, formulas }) {
+export default function FormulasPage({ hasData, columns, formulas, permissions, authHeader }) {
+  const canEditFormulas = !!permissions?.canEditFormulas;
+
   const [nvInput, setNvInput] = useState('');
   const [sampleRow, setSampleRow] = useState(null);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [sampleError, setSampleError] = useState('');
 
-  // Borradores de fórmula por columna (lo que se ve en pantalla)
   const [drafts, setDrafts] = useState({});
   const [savingCol, setSavingCol] = useState(null);
   const [saveError, setSaveError] = useState('');
 
-  // Inicializar borradores a partir de formulas que vienen de App
   useEffect(() => {
     const initial = {};
     (columns || []).forEach((col) => {
@@ -39,14 +37,9 @@ export default function FormulasPage({ hasData, columns, formulas }) {
   }, [columns, formulas]);
 
   if (!hasData) {
-    return (
-      <div className="info">
-        No hay datos de Pre_Producción para listar propiedades todavía.
-      </div>
-    );
+    return <div className="info">No hay datos de Pre_Producción para listar propiedades todavía.</div>;
   }
 
-  // Cargar un NV de prueba desde el backend
   async function handleLoadSampleRow(e) {
     e.preventDefault();
     const nv = nvInput.trim();
@@ -64,24 +57,21 @@ export default function FormulasPage({ hasData, columns, formulas }) {
       const params = new URLSearchParams();
       params.set('nv', nv);
 
-      // 1) sync
-      await fetch(`${API_BASE_URL}/api/pre-produccion?${params.toString()}`);
+      await fetch(`${API_BASE_URL}/api/pre-produccion?${params.toString()}`, {
+        headers: { ...(authHeader || {}) },
+      });
 
-      // 2) valores definitivos
-      let res = await fetch(
-        `${API_BASE_URL}/api/pre-produccion-valores?${params.toString()}`
-      );
-
-      // fallback a SQL si falla
-      if (!res.ok) {
-        res = await fetch(
-          `${API_BASE_URL}/api/pre-produccion?${params.toString()}`
-        );
-      }
+      let res = await fetch(`${API_BASE_URL}/api/pre-produccion-valores?${params.toString()}`, {
+        headers: { ...(authHeader || {}) },
+      });
 
       if (!res.ok) {
-        throw new Error(`Error HTTP ${res.status}`);
+        res = await fetch(`${API_BASE_URL}/api/pre-produccion?${params.toString()}`, {
+          headers: { ...(authHeader || {}) },
+        });
       }
+
+      if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
 
       const data = await res.json();
       if (!data.rows || !data.rows.length) {
@@ -99,7 +89,6 @@ export default function FormulasPage({ hasData, columns, formulas }) {
     }
   }
 
-  // Compilar todas las fórmulas (borradores) una sola vez
   const { compiledDrafts, compileErrors } = useMemo(() => {
     const compiled = {};
     const errors = {};
@@ -128,32 +117,23 @@ export default function FormulasPage({ hasData, columns, formulas }) {
     return { compiledDrafts: compiled, compileErrors: errors };
   }, [drafts]);
 
-  // Calcula pre/post para una columna en el sampleRow (respetando fórmulas encadenadas)
   function getPrePostForColumn(col) {
-    if (!sampleRow) {
-      return { pre: '', post: '' };
-    }
+    if (!sampleRow) return { pre: '', post: '' };
 
     const raw = sampleRow[col];
     const pre = raw === null || raw === undefined ? '' : String(raw);
 
     const expr = drafts[col] ? drafts[col].trim() : '';
-    if (!expr) {
-      return { pre, post: pre };
-    }
+    if (!expr) return { pre, post: pre };
 
     const fn = compiledDrafts[col];
-    if (!fn) {
-      return { pre, post: '' };
-    }
+    if (!fn) return { pre, post: '' };
 
     const cache = {};
     const visiting = new Set();
 
     function evalCol(c) {
-      if (Object.prototype.hasOwnProperty.call(cache, c)) {
-        return cache[c];
-      }
+      if (Object.prototype.hasOwnProperty.call(cache, c)) return cache[c];
 
       if (visiting.has(c)) {
         console.warn('Dependencia circular de fórmulas (FormulasPage) en:', c);
@@ -170,7 +150,6 @@ export default function FormulasPage({ hasData, columns, formulas }) {
         return rawVal;
       }
 
-      // ✅ clave: permitir referenciar columnas con fórmula aunque no existan como propiedad en sampleRow
       const proxyRow = new Proxy(sampleRow, {
         get(target, prop, receiver) {
           if (
@@ -206,14 +185,17 @@ export default function FormulasPage({ hasData, columns, formulas }) {
     }
 
     const r = evalCol(col);
-    const post =
-      r === null || r === undefined || Number.isNaN(r) ? '' : String(r);
+    const post = r === null || r === undefined || Number.isNaN(r) ? '' : String(r);
 
     return { pre, post };
   }
 
-  // Guardar la fórmula de una columna
   async function handleSaveColumnFormula(col) {
+    if (!canEditFormulas) {
+      window.alert('No tenés permisos para editar fórmulas.');
+      return;
+    }
+
     const prev = (formulas[col] ?? '').trim();
     const draft = (drafts[col] ?? '').trim();
 
@@ -235,18 +217,13 @@ export default function FormulasPage({ hasData, columns, formulas }) {
         );
       } catch (e) {
         console.error('Error de sintaxis en fórmula:', e);
-        window.alert(
-          'La fórmula tiene un error de sintaxis y no se guardó:\n\n' +
-            (e.message || String(e))
-        );
+        window.alert('La fórmula tiene un error de sintaxis y no se guardó:\n\n' + (e.message || String(e)));
         return;
       }
     }
 
     const msg = prev
-      ? `La columna "${col}" tiene actualmente la fórmula:\n\n${
-          prev || '(sin fórmula)'
-        }\n\n¿Querés reemplazarla por?\n\n${
+      ? `La columna "${col}" tiene actualmente la fórmula:\n\n${prev || '(sin fórmula)'}\n\n¿Querés reemplazarla por?\n\n${
           draft || '(sin fórmula, usar valor original)'
         }`
       : `¿Querés aplicar esta fórmula a la columna "${col}"?\n\n${
@@ -259,10 +236,8 @@ export default function FormulasPage({ hasData, columns, formulas }) {
     setSavingCol(col);
     setSaveError('');
     try {
-      await saveFormulaToBackend(col, draft);
-      window.alert(
-        `Fórmula de la columna "${col}" guardada correctamente.\nSe recargará la página.`
-      );
+      await saveFormulaToBackend(col, draft, authHeader);
+      window.alert(`Fórmula de la columna "${col}" guardada correctamente.\nSe recargará la página.`);
       window.location.reload();
     } catch (err) {
       console.error('Error guardando fórmula:', err);
@@ -279,10 +254,7 @@ export default function FormulasPage({ hasData, columns, formulas }) {
   }
 
   const nvToShow =
-    sampleRow &&
-    sampleRow.NV !== undefined &&
-    sampleRow.NV !== null &&
-    sampleRow.NV !== ''
+    sampleRow && sampleRow.NV !== undefined && sampleRow.NV !== null && sampleRow.NV !== ''
       ? sampleRow.NV
       : nvInput && nvInput !== ''
       ? nvInput
@@ -293,8 +265,7 @@ export default function FormulasPage({ hasData, columns, formulas }) {
       <div className="formulas-panel">
         <h2>Fórmulas por propiedad (con NV de prueba)</h2>
         <p className="hint">
-          Ingresá un NV para ver, por cada propiedad, el valor original y el
-          valor calculado con la fórmula actual / borrador.
+          Ingresá un NV para ver, por cada propiedad, el valor original y el valor calculado con la fórmula actual / borrador.
         </p>
 
         <form className="field-row" onSubmit={handleLoadSampleRow}>
@@ -307,15 +278,12 @@ export default function FormulasPage({ hasData, columns, formulas }) {
               placeholder="Ej: 1019"
             />
           </label>
-          <button
-            type="submit"
-            className="btn-secondary"
-            disabled={sampleLoading}
-          >
+          <button type="submit" className="btn-secondary" disabled={sampleLoading}>
             {sampleLoading ? 'Cargando...' : 'Cargar portón'}
           </button>
         </form>
 
+        {!canEditFormulas && <div className="info">Modo solo lectura de fórmulas.</div>}
         {sampleError && <div className="error">⚠ {sampleError}</div>}
         {saveError && <div className="error">⚠ {saveError}</div>}
 
@@ -333,6 +301,7 @@ export default function FormulasPage({ hasData, columns, formulas }) {
                 <th>Fórmula (borrador)</th>
                 <th>Valor original (NV de prueba)</th>
                 <th>Valor con fórmula</th>
+                {canEditFormulas && <th>Acción</th>}
               </tr>
             </thead>
             <tbody>
@@ -345,37 +314,41 @@ export default function FormulasPage({ hasData, columns, formulas }) {
                   <tr key={col}>
                     <td>{col}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input
                           type="text"
                           className="formula-input-header"
                           value={expr}
+                          disabled={!canEditFormulas}
                           onChange={(e) =>
                             setDrafts((current) => ({
                               ...current,
                               [col]: e.target.value,
                             }))
                           }
-                          onKeyDown={(e) => handleFormulaKeyDown(e, col)}
-                          placeholder="fórmula"
+                          onKeyDown={(e) => {
+                            if (!canEditFormulas) return;
+                            handleFormulaKeyDown(e, col);
+                          }}
+                          placeholder={canEditFormulas ? 'fórmula' : 'solo lectura'}
                         />
+                        {hasSyntaxError && <span className="col-error" title={compileErrors[col]}>⚠</span>}
+                      </div>
+                    </td>
+                    <td>{pre}</td>
+                    <td>{post}</td>
+                    {canEditFormulas && (
+                      <td>
                         <button
                           type="button"
                           className="btn-small"
                           onClick={() => handleSaveColumnFormula(col)}
                           disabled={savingCol === col}
                         >
-                          {savingCol === col ? '...' : '💾'}
+                          {savingCol === col ? 'Guardando…' : 'Guardar'}
                         </button>
-                        {hasSyntaxError && (
-                          <span className="col-error" title={compileErrors[col]}>
-                            ⚠
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td>{pre}</td>
-                    <td>{post}</td>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -384,10 +357,7 @@ export default function FormulasPage({ hasData, columns, formulas }) {
         </div>
 
         {!sampleRow && !sampleError && (
-          <p className="hint">
-            Cargá un NV de prueba para ver los valores “pre” y “post” en cada
-            propiedad.
-          </p>
+          <p className="hint">Cargá un NV de prueba para ver los valores “pre” y “post” en cada propiedad.</p>
         )}
       </div>
     </div>

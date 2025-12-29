@@ -1,5 +1,6 @@
 // src/pages/ViewPdf.jsx
 import { useMemo, useState } from 'react';
+import { useAuth } from '../auth/AuthProvider.jsx';
 
 // Arm Primario
 import {
@@ -7,7 +8,7 @@ import {
   generatePdfArmPrimarioByPartida,
 } from './pdfs/PdfArmPrimario.jsx';
 
-// ✅ Imports estáticos (sin dynamic import para evitar 404 de chunks en Vercel)
+// Imports estáticos
 import { generatePdfDisenoLaserByPartida } from './pdfs/PdfDisenoLaser.jsx';
 import { generatePdfCortePlegadoByPartida } from './pdfs/PdfCortePlegado.jsx';
 import { generatePdfTapajuntasByPartida } from './pdfs/PdfTapajuntas.jsx';
@@ -27,6 +28,9 @@ export default function ViewPdf() {
   const canPartida = useMemo(() => toStr(partida).length > 0, [partida]);
   const canNv = useMemo(() => toStr(nv).length > 0, [nv]);
 
+  const { session } = useAuth();
+  const accessToken = session?.access_token || null;
+
   async function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -38,12 +42,14 @@ export default function ViewPdf() {
     URL.revokeObjectURL(url);
   }
 
-  async function run(key, fn) {
-    setLoadingKey(key);
+  async function run(filename, fnWithToken) {
+    setLoadingKey(filename);
     setError('');
     try {
-      const blob = await fn();
-      await downloadBlob(blob, key);
+      if (!accessToken) throw new Error('No hay sesión activa (token vacío).');
+
+      const blob = await fnWithToken(accessToken);
+      await downloadBlob(blob, filename);
     } catch (e) {
       console.error(e);
       setError(e?.message || String(e));
@@ -52,11 +58,19 @@ export default function ViewPdf() {
     }
   }
 
+  const anyLoading = !!loadingKey;
+
   return (
     <div className="import-panel">
       <h2>Generar PDFs</h2>
 
-      <div className="field-row" style={{ gap: 16, flexWrap: 'wrap' }}>
+      {!accessToken && (
+        <div className="error" style={{ marginTop: 8 }}>
+          ⚠ No hay sesión activa. Iniciá sesión para generar PDFs privados.
+        </div>
+      )}
+
+      <div className="field-row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
         <label>
           PARTIDA:&nbsp;
           <input
@@ -78,7 +92,6 @@ export default function ViewPdf() {
         </label>
       </div>
 
-      {/* ===== PDFs por PARTIDA ===== */}
       <div style={{ marginTop: 12 }}>
         <h3 style={{ margin: '12px 0 6px' }}>Por PARTIDA</h3>
 
@@ -86,58 +99,57 @@ export default function ViewPdf() {
           <button
             type="button"
             className="btn-secondary"
-            disabled={!canPartida || !!loadingKey}
+            disabled={!canPartida || anyLoading || !accessToken}
             onClick={() =>
-              run(`Partida_${toStr(partida)}_DisenoLaser.pdf`, async () => {
-                return generatePdfDisenoLaserByPartida(toStr(partida));
+              run(`Partida_${toStr(partida)}_DisenoLaser.pdf`, async (token) => {
+                return generatePdfDisenoLaserByPartida(toStr(partida), token);
               })
             }
           >
-            {loadingKey ? '...' : 'PDF Diseño Laser'}
+            {anyLoading ? '...' : 'PDF Diseño Laser'}
           </button>
 
           <button
             type="button"
             className="btn-secondary"
-            disabled={!canPartida || !!loadingKey}
+            disabled={!canPartida || anyLoading || !accessToken}
             onClick={() =>
-              run(`Partida_${toStr(partida)}_CortePlegado.pdf`, async () => {
-                return generatePdfCortePlegadoByPartida(toStr(partida));
+              run(`Partida_${toStr(partida)}_CortePlegado.pdf`, async (token) => {
+                return generatePdfCortePlegadoByPartida(toStr(partida), token);
               })
             }
           >
-            {loadingKey ? '...' : 'PDF Corte y Plegado'}
+            {anyLoading ? '...' : 'PDF Corte y Plegado'}
           </button>
 
           <button
             type="button"
             className="btn-secondary"
-            disabled={!canPartida || !!loadingKey}
+            disabled={!canPartida || anyLoading || !accessToken}
             onClick={() =>
-              run(`Partida_${toStr(partida)}_Tapajuntas.pdf`, async () => {
-                return generatePdfTapajuntasByPartida(toStr(partida));
+              run(`Partida_${toStr(partida)}_Tapajuntas.pdf`, async (token) => {
+                return generatePdfTapajuntasByPartida(toStr(partida), token);
               })
             }
           >
-            {loadingKey ? '...' : 'PDF Tapajuntas'}
+            {anyLoading ? '...' : 'PDF Tapajuntas'}
           </button>
 
           <button
             type="button"
             className="btn-secondary"
-            disabled={!canPartida || !!loadingKey}
+            disabled={!canPartida || anyLoading || !accessToken}
             onClick={() =>
-              run(`Partida_${toStr(partida)}_ArmadoPrimario.pdf`, async () => {
-                return generatePdfArmPrimarioByPartida(toStr(partida));
+              run(`Partida_${toStr(partida)}_ArmadoPrimario.pdf`, async (token) => {
+                return generatePdfArmPrimarioByPartida(toStr(partida), token);
               })
             }
           >
-            {loadingKey ? '...' : 'PDF Armado Primario (1 hoja por portón)'}
+            {anyLoading ? '...' : 'PDF Armado Primario (1 hoja por portón)'}
           </button>
         </div>
       </div>
 
-      {/* ===== PDF por NV ===== */}
       <div style={{ marginTop: 16 }}>
         <h3 style={{ margin: '12px 0 6px' }}>Por NV (1 portón)</h3>
 
@@ -145,14 +157,14 @@ export default function ViewPdf() {
           <button
             type="button"
             className="btn-secondary"
-            disabled={!canNv || !!loadingKey}
+            disabled={!canNv || anyLoading || !accessToken}
             onClick={() =>
-              run(`NV_${toStr(nv)}_ArmadoPrimario.pdf`, async () => {
-                return generatePdfArmPrimarioByNv(toStr(nv));
+              run(`NV_${toStr(nv)}_ArmadoPrimario.pdf`, async (token) => {
+                return generatePdfArmPrimarioByNv(toStr(nv), token);
               })
             }
           >
-            {loadingKey ? '...' : 'PDF Armado Primario'}
+            {anyLoading ? '...' : 'PDF Armado Primario'}
           </button>
         </div>
       </div>
@@ -162,13 +174,6 @@ export default function ViewPdf() {
           ⚠ {error}
         </div>
       )}
-
-      <p className="hint" style={{ marginTop: 10 }}>
-        Plantillas esperadas en <code>/public/</code>:
-        <br />
-        <code>pdf_modelo_diseno_laser.pdf</code>, <code>pdf_modelo_corte_plegado.pdf</code>,{' '}
-        <code>pdf_modelo_tapajuntas.pdf</code>, <code>pdf_modelo_armPrimario.pdf</code>
-      </p>
     </div>
   );
 }
