@@ -1,12 +1,14 @@
-// src/auth/AuthProvider.jsx
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+
+const POST_LOGIN_DELAY_MS = 4000; // <-- ACÁ cambiás el retardo (en ms)
 
 const AuthContext = createContext({
   session: null,
   user: null,
   role: 'viewer',
   loading: true,
+  postLoginDelay: false,
   signIn: async () => {
     throw new Error('AuthProvider no inicializado');
   },
@@ -20,6 +22,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState('viewer');
   const [loading, setLoading] = useState(true);
+
+  // Mientras esto sea true, el Gate mantiene visible el LoginPage (con inputs verdes).
+  const [postLoginDelay, setPostLoginDelay] = useState(false);
+  const delayTimerRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -70,6 +76,21 @@ export function AuthProvider({ children }) {
       console.log('[AuthProvider] token limpiado');
     }
 
+    function startPostLoginDelay() {
+      // Reinicia el timer si hubiera uno previo
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current);
+        delayTimerRef.current = null;
+      }
+
+      setPostLoginDelay(true);
+
+      delayTimerRef.current = setTimeout(() => {
+        if (!alive) return;
+        setPostLoginDelay(false);
+      }, POST_LOGIN_DELAY_MS);
+    }
+
     async function init() {
       try {
         setLoading(true);
@@ -80,6 +101,9 @@ export function AuthProvider({ children }) {
         const s = data?.session ?? null;
         setSession(s);
         setUser(s?.user ?? null);
+
+        // En init NO aplicamos delay (si recarga la página ya logueado, no tiene sentido)
+        setPostLoginDelay(false);
 
         if (s?.access_token) {
           stashToken(s.access_token, 'init');
@@ -96,22 +120,33 @@ export function AuthProvider({ children }) {
 
     init();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       setSession(newSession ?? null);
       setUser(newSession?.user ?? null);
 
       if (newSession?.access_token) {
-        stashToken(newSession.access_token, 'change');
+        stashToken(newSession.access_token, `change:${event}`);
+
+        // Sólo al hacer SIGNED_IN aplicamos el “delay visual”
+        if (event === 'SIGNED_IN') {
+          startPostLoginDelay();
+        }
+
         const r = await fetchRole(newSession.access_token);
         if (alive) setRole(r);
       } else {
         clearToken();
         if (alive) setRole('viewer');
+        if (alive) setPostLoginDelay(false);
       }
     });
 
     return () => {
       alive = false;
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current);
+        delayTimerRef.current = null;
+      }
       sub?.subscription?.unsubscribe?.();
     };
   }, []);
@@ -119,10 +154,6 @@ export function AuthProvider({ children }) {
   async function signIn(email, password) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-
-    // ✅ Delay para que el LoginPage muestre "verde" antes de que el AuthGate cambie a MainApp
-    await new Promise((r) => setTimeout(r, 4000));
-
     return data;
   }
 
@@ -131,7 +162,10 @@ export function AuthProvider({ children }) {
     if (error) throw error;
   }
 
-  const value = useMemo(() => ({ session, user, role, loading, signIn, signOut }), [session, user, role, loading]);
+  const value = useMemo(
+    () => ({ session, user, role, loading, postLoginDelay, signIn, signOut }),
+    [session, user, role, loading, postLoginDelay]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -1,8 +1,7 @@
-// src/pages/LoginPage.jsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider.jsx';
 
-export default function LoginPage() {
+export default function LoginPage({ forceSuccess = false, locked = false }) {
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -10,79 +9,91 @@ export default function LoginPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
 
-  const showError = !!error && !loading && !success;
+  // idle | success | error
+  const [status, setStatus] = useState('idle');
 
-  const emailClass = useMemo(() => {
-    if (success) return 'login-input login-input--success';
-    if (showError) return 'login-input login-input--error';
+  useEffect(() => {
+    if (forceSuccess) {
+      setStatus('success');
+      setError('');
+      setLoading(true); // lo dejamos “cargando” durante la transición
+    }
+  }, [forceSuccess]);
+
+  const emailClassName = useMemo(() => {
+    if (status === 'error') return 'login-input login-input--error';
+    if (status === 'success') return 'login-input login-input--success';
     return 'login-input';
-  }, [success, showError]);
+  }, [status]);
 
-  const passClass = useMemo(() => {
-    if (success) return 'login-input login-input--success';
-    if (showError) return 'login-input login-input--error';
+  const passClassName = useMemo(() => {
+    if (status === 'error') return 'login-input login-input--error';
+    if (status === 'success') return 'login-input login-input--success';
     return 'login-input';
-  }, [success, showError]);
+  }, [status]);
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (locked || forceSuccess) return;
 
     setError('');
-    setSuccess(false);
+    setStatus('idle');
     setLoading(true);
 
     try {
       await signIn(email.trim(), password);
-      // ✅ marcamos success; el delay lo hace AuthProvider.signIn()
-      setSuccess(true);
-      // luego AuthGate cambia automáticamente a MainApp
+      // No seteamos success acá; el Gate lo fuerza con postLoginDelay
     } catch (err) {
-      setSuccess(false);
+      setStatus('error');
       setError(err?.message || String(err));
-    } finally {
       setLoading(false);
+      return;
+    } finally {
+      // si logueó ok, el componente probablemente siga visible por postLoginDelay y dejamos loading true desde forceSuccess
+      if (!forceSuccess) setLoading(false);
     }
   }
 
+  const disabled = loading || locked || forceSuccess;
+
   return (
-    <div className="page" style={{ justifyContent: 'center' }}>
+    <div className="page">
       <div className="import-panel login-panel">
-        <h2 style={{ marginTop: 0 }}>Ingresar</h2>
+        <h2>Ingresar</h2>
 
         <form onSubmit={handleSubmit} className="field-row login-form">
           <label>
             Email
             <input
-              className={emailClass}
               type="email"
+              className={emailClassName}
               value={email}
               autoComplete="username"
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={loading}
+              disabled={disabled}
             />
           </label>
 
           <label>
             Contraseña
             <input
-              className={passClass}
               type="password"
+              className={passClassName}
               value={password}
               autoComplete="current-password"
               onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={loading}
+              disabled={disabled}
             />
           </label>
 
-          <button type="submit" className="btn-secondary" disabled={loading}>
-            {loading ? 'Ingresando...' : 'Ingresar'}
+          <button type="submit" className="btn-secondary" disabled={disabled}>
+            {forceSuccess ? 'Entrando...' : loading ? 'Ingresando...' : 'Ingresar'}
           </button>
 
-          {showError && <div className="error">⚠ {error}</div>}
+          {error && <div className="error">⚠ {error}</div>}
         </form>
       </div>
     </div>

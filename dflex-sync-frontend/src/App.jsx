@@ -114,8 +114,9 @@ export default function App() {
 }
 
 function AuthGate() {
-  // AuthGate SOLO maneja auth. Nada de useMemo/useState extra.
-  const { session, loading: authLoading, signOut, role } = useAuth();
+  // AuthGate SOLO maneja auth.
+  // NOTA: ahora también lee postLoginDelay para mantener Login visible durante el delay.
+  const { session, loading: authLoading, signOut, role, postLoginDelay } = useAuth();
 
   if (authLoading) {
     return (
@@ -123,6 +124,13 @@ function AuthGate() {
         <div className="info">Cargando sesión…</div>
       </div>
     );
+  }
+
+  // ✅ CLAVE DEL DELAY VISUAL:
+  // Si Supabase ya dio sesión pero todavía estamos dentro del "postLoginDelay",
+  // mantenemos el LoginPage en modo "success" (inputs verdes) y bloqueado.
+  if (session && postLoginDelay) {
+    return <LoginPage forceSuccess locked />;
   }
 
   if (!session) {
@@ -315,19 +323,13 @@ function MainApp({ session, signOut, role }) {
 
       const proxyRow = new Proxy(row, {
         get(target, prop, receiver) {
-          if (
-            typeof prop === 'string' &&
-            (Object.prototype.hasOwnProperty.call(target, prop) || compiledFormulas[prop])
-          ) {
+          if (typeof prop === 'string' && (Object.prototype.hasOwnProperty.call(target, prop) || compiledFormulas[prop])) {
             return evalCol(prop);
           }
           return Reflect.get(target, prop, receiver);
         },
         has(target, prop) {
-          if (
-            typeof prop === 'string' &&
-            (Object.prototype.hasOwnProperty.call(target, prop) || compiledFormulas[prop])
-          ) {
+          if (typeof prop === 'string' && (Object.prototype.hasOwnProperty.call(target, prop) || compiledFormulas[prop])) {
             return true;
           }
           return Reflect.has(target, prop);
@@ -374,12 +376,8 @@ function MainApp({ session, signOut, role }) {
     }
 
     const msg = prev
-      ? `La columna "${col}" ya tiene esta fórmula:\n\n${prev}\n\n¿Querés reemplazarla por?\n\n${
-          draft || '(sin fórmula, usar valor original)'
-        }`
-      : `¿Querés aplicar esta fórmula a la columna "${col}"?\n\n${
-          draft || '(sin fórmula, usar valor original)'
-        }`;
+      ? `La columna "${col}" ya tiene esta fórmula:\n\n${prev}\n\n¿Querés reemplazarla por?\n\n${draft || '(sin fórmula, usar valor original)'}`
+      : `¿Querés aplicar esta fórmula a la columna "${col}"?\n\n${draft || '(sin fórmula, usar valor original)'}`;
 
     const ok = window.confirm(msg);
     if (!ok) {
