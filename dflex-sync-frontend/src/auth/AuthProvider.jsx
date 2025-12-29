@@ -36,6 +36,13 @@ export function AuthProvider({ children }) {
         setSession(s);
         setUser(s?.user ?? null);
 
+        // DEBUG (solo DEV): loguea token para pegar en Insomnia
+        if (import.meta.env.DEV && s?.access_token) {
+          const t = s.access_token;
+          console.log('[Auth] access_token (short):', `${t.slice(0, 16)}...${t.slice(-8)}`);
+          console.log('[Auth] access_token (FULL):', t);
+        }
+
         // Si tenés endpoint /api/me que devuelve role, lo podés usar acá:
         if (s?.access_token) {
           try {
@@ -65,6 +72,13 @@ export function AuthProvider({ children }) {
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession ?? null);
       setUser(newSession?.user ?? null);
+
+      // DEBUG (solo DEV): loguea token en cada cambio de sesión
+      if (import.meta.env.DEV && newSession?.access_token) {
+        const t = newSession.access_token;
+        console.log('[Auth] access_token (change, short):', `${t.slice(0, 16)}...${t.slice(-8)}`);
+        console.log('[Auth] access_token (change, FULL):', t);
+      }
 
       if (newSession?.access_token) {
         try {
