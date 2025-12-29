@@ -743,7 +743,9 @@ function calcularLargoEspada({ DATOS_Brazos } = {}) {
       }
     }
 
-    const m = s.match(/espada\s*[:=]\s*(\d+(?:[.,]\d+)?)/i) || s.match(/largo\s*espada\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i);
+    const m =
+      s.match(/espada\s*[:=]\s*(\d+(?:[.,]\d+)?)/i) ||
+      s.match(/largo\s*espada\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i);
     if (m) {
       const n = parseFloat(m[1].replace(',', '.'));
       if (Number.isFinite(n)) return n;
@@ -841,6 +843,56 @@ async function syncPreproduccionToSupabaseFromSqlRows(sqlRows) {
     await upsertPreproduccionSqlRow(updatedRow);
     await upsertPreproduccionValoresFillDerived(updatedRow, compiled);
   }
+}
+
+// =====================
+// SYNC ASYNC (OPCIÓN A)
+// - No bloquea la respuesta de /api/pre-produccion
+// - Dedup por NV y cola simple
+// =====================
+
+let syncRunning = false;
+const syncQueueByNv = new Map(); // nv(string) -> row
+
+function enqueuePreproduccionSync(rows) {
+  if (!supabasePool || !Array.isArray(rows) || !rows.length) return;
+
+  for (const r of rows) {
+    const nvKey = r?.NV !== null && r?.NV !== undefined ? String(r.NV).trim() : '';
+    if (!nvKey) continue;
+    syncQueueByNv.set(nvKey, r);
+  }
+
+  schedulePreproduccionSyncWorker();
+}
+
+function schedulePreproduccionSyncWorker() {
+  if (syncRunning) return;
+
+  syncRunning = true;
+
+  setImmediate(async () => {
+    try {
+      while (syncQueueByNv.size > 0) {
+        // Tomamos un batch y vaciamos cola
+        const batch = Array.from(syncQueueByNv.values());
+        syncQueueByNv.clear();
+
+        try {
+          await syncPreproduccionToSupabaseFromSqlRows(batch);
+        } catch (e) {
+          console.error('Error sincronizando Pre_Produccion con Supabase (async batch):', e?.message || e);
+        }
+      }
+    } finally {
+      syncRunning = false;
+
+      // Si entraron cosas mientras corría, reprogramamos
+      if (syncQueueByNv.size > 0) {
+        schedulePreproduccionSyncWorker();
+      }
+    }
+  });
 }
 
 // =====================
@@ -1042,12 +1094,13 @@ app.get('/api/pre-produccion', requireAuth, attachRole, async (req, res) => {
   try {
     const rows = await getPreProduccionRows(nv);
 
+    // ✅ OPCIÓN A: NO BLOQUEAR RESPUESTA CON SYNC
     try {
       if (rows.length && supabasePool) {
-        await syncPreproduccionToSupabaseFromSqlRows(rows);
+        enqueuePreproduccionSync(rows);
       }
     } catch (syncErr) {
-      console.error('Error sincronizando Pre_Produccion con Supabase:', syncErr.message || syncErr);
+      console.error('Error encolando sync Pre_Produccion (async):', syncErr?.message || syncErr);
     }
 
     return res.json({ count: rows.length, rows });
