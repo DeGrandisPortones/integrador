@@ -380,7 +380,6 @@ async function upsertPreproduccionSqlRow(rawRow) {
   );
 }
 
-
 function computeFormulaValuesWithDeps(row, compiled) {
   const cache = {};
   const visiting = new Set();
@@ -449,6 +448,13 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
   const nvVal = rawRow.NV !== null && rawRow.NV !== undefined ? parseInt(rawRow.NV, 10) : null;
   if (!nvVal || Number.isNaN(nvVal)) return;
 
+  // ✅ mismo enfoque que preproduccion_sql: forzar id
+  const idVal = rawRow.ID ?? rawRow.Id ?? rawRow.id;
+  if (idVal == null) {
+    console.warn('Fila sin ID para preproduccion_valores, NV', nvVal);
+    return;
+  }
+
   let baseRow = null;
   try {
     const r = await supabasePool.query('SELECT data FROM preproduccion_sql WHERE nv = $1 LIMIT 1', [nvVal]);
@@ -495,14 +501,14 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
 
   await supabasePool.query(
     `
-      INSERT INTO preproduccion_valores (nv, data)
-      VALUES ($1, $2::jsonb)
+      INSERT INTO preproduccion_valores (id, nv, data)
+      VALUES ($1, $2, $3::jsonb)
       ON CONFLICT (nv)
       DO UPDATE SET
         data = EXCLUDED.data,
         updated_at = now()
     `,
-    [nvVal, JSON.stringify(payload)]
+    [idVal, nvVal, JSON.stringify(payload)]
   );
 }
 
@@ -1153,16 +1159,32 @@ app.post(
           continue;
         }
 
+        // ✅ mismo criterio: necesitamos id para no violar NOT NULL
+        const idVal = u?.id ?? u?.ID ?? null;
+
+        // Si el front no manda id, lo buscamos por nv en preproduccion_sql
+        let effectiveId = idVal;
+        if (effectiveId == null) {
+          const r = await client.query('SELECT id FROM preproduccion_sql WHERE nv = $1 LIMIT 1', [nvParsed]);
+          effectiveId = r?.rows?.[0]?.id ?? null;
+        }
+
+        if (effectiveId == null) {
+          skipped += 1;
+          console.warn('bulk-update: no se encontró id para NV', nvParsed, '(se saltea)');
+          continue;
+        }
+
         await client.query(
           `
-            INSERT INTO preproduccion_valores (nv, data)
-            VALUES ($1, $2::jsonb)
+            INSERT INTO preproduccion_valores (id, nv, data)
+            VALUES ($1, $2, $3::jsonb)
             ON CONFLICT (nv)
             DO UPDATE SET
               data = COALESCE(preproduccion_valores.data, '{}'::jsonb) || EXCLUDED.data,
               updated_at = now()
           `,
-          [nvParsed, JSON.stringify(changes)]
+          [effectiveId, nvParsed, JSON.stringify(changes)]
         );
 
         applied += 1;
