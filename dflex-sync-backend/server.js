@@ -358,21 +358,28 @@ async function getCompiledFormulasFromDb() {
 async function upsertPreproduccionSqlRow(rawRow) {
   if (!supabasePool) return;
 
-  const nvVal = rawRow.NV !== null && rawRow.NV !== undefined ? parseInt(rawRow.NV, 10) : null;
+  const nvVal = rawRow.NV != null ? parseInt(rawRow.NV, 10) : null;
   if (!nvVal || Number.isNaN(nvVal)) return;
+
+  const idVal = rawRow.ID ?? rawRow.Id ?? rawRow.id; // por si cambia el case
+  if (idVal == null) {
+    console.warn('Fila sin ID en SQL Server para NV', nvVal);
+    return;
+  }
 
   await supabasePool.query(
     `
-      INSERT INTO preproduccion_sql (nv, data)
-      VALUES ($1, $2)
+      INSERT INTO preproduccion_sql (id, nv, data)
+      VALUES ($1, $2, $3)
       ON CONFLICT (nv)
       DO UPDATE
         SET data = EXCLUDED.data,
             updated_at = now()
     `,
-    [nvVal, rawRow]
+    [idVal, nvVal, rawRow]
   );
 }
+
 
 function computeFormulaValuesWithDeps(row, compiled) {
   const cache = {};
