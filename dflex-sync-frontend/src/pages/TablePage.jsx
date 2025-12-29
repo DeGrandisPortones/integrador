@@ -1,3 +1,4 @@
+// src/pages/TablePage.jsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const LS_VISIBLE_COLS_KEY = 'dflex_pp_visible_columns_v1';
@@ -52,9 +53,7 @@ export default function TablePage({
       return;
     }
 
-    const ok = window.confirm(
-      `Hay cambios en ${keys.length} portón(es).\n\n¿Deseás guardar estos cambios?`
-    );
+    const ok = window.confirm(`Hay cambios en ${keys.length} portón(es).\n\n¿Deseás guardar estos cambios?`);
     if (!ok) return;
 
     try {
@@ -65,10 +64,7 @@ export default function TablePage({
       editedRef.current = {};
     } catch (err) {
       console.error('Error guardando cambios:', err);
-      window.alert(
-        'Ocurrió un error guardando los cambios:\n' +
-          (err?.message || String(err))
-      );
+      window.alert('Ocurrió un error guardando los cambios:\n' + (err?.message || String(err)));
     }
   }
 
@@ -236,11 +232,7 @@ export default function TablePage({
                 <span className="hint">Modo solo lectura</span>
               )}
 
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowColumnsMenu((v) => !v)}
-              >
+              <button type="button" className="btn-secondary" onClick={() => setShowColumnsMenu((v) => !v)}>
                 {showColumnsMenu ? 'Ocultar columnas' : 'Columnas visibles'}
               </button>
             </div>
@@ -427,15 +419,7 @@ export default function TablePage({
             </table>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: 8,
-              alignItems: 'center',
-              marginTop: 10,
-            }}
-          >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', marginTop: 10 }}>
             <button type="button" onClick={goFirst} disabled={page <= 1}>
               {'<<'}
             </button>

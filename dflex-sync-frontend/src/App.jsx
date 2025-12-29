@@ -115,7 +115,7 @@ export default function App() {
 
 function AuthGate() {
   // AuthGate SOLO maneja auth. Nada de useMemo/useState extra.
-  const { session, loading: authLoading, signOut } = useAuth();
+  const { session, loading: authLoading, signOut, role } = useAuth();
 
   if (authLoading) {
     return (
@@ -129,11 +129,25 @@ function AuthGate() {
     return <LoginPage />;
   }
 
-  return <MainApp session={session} signOut={signOut} />;
+  return <MainApp session={session} signOut={signOut} role={role} />;
 }
 
-function MainApp({ session, signOut }) {
+function MainApp({ session, signOut, role }) {
   const accessToken = session?.access_token || null;
+
+  // ✅ authHeader (para componentes que lo usan directamente)
+  const authHeader = useMemo(() => {
+    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  }, [accessToken]);
+
+  // ✅ permissions calculadas desde role
+  const permissions = useMemo(() => {
+    const r = String(role || 'viewer').trim().toLowerCase();
+    return {
+      canEditFormulas: r === 'admin' || r === 'formula_editor',
+      canEditData: r === 'admin' || r === 'data_editor',
+    };
+  }, [role]);
 
   // ===== current page (persistido) =====
   const [currentPage, setCurrentPage] = useState(() => {
@@ -286,7 +300,6 @@ function MainApp({ session, signOut }) {
       if (Object.prototype.hasOwnProperty.call(cache, col)) return cache[col];
 
       if (visiting.has(col)) {
-  
         return row[col];
       }
       visiting.add(col);
@@ -531,17 +544,18 @@ function MainApp({ session, signOut }) {
           handleFormulaKeyDown={handleFormulaKeyDown}
           getDisplayValue={getDisplayValue}
           onSaveChanges={saveTableChanges}
+          permissions={permissions}
+          authHeader={authHeader}
         />
       )}
 
       {currentPage === 'formulas' && (
         <FormulasPage
           hasData={hasData}
-          columns={columnsToShow}
-          allColumns={allColumns}
-          visibleColumns={visibleColumns}
-          onChangeVisibleColumns={handleChangeVisibleColumns}
+          columns={allColumns}
           formulas={formulas}
+          permissions={permissions}
+          authHeader={authHeader}
         />
       )}
 

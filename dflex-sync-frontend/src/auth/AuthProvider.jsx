@@ -28,10 +28,9 @@ export function AuthProvider({ children }) {
 
     async function fetchRole(token) {
       try {
-        const res = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'}/api/me`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'}/api/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (!res.ok) return 'viewer';
         const me = await res.json();
         return me?.role || 'viewer';
@@ -53,7 +52,6 @@ export function AuthProvider({ children }) {
         // ignore
       }
 
-      // Log simple, para que lo encuentres aunque haya spam
       const short = token ? `${token.slice(0, 12)}...${token.slice(-6)}` : '(empty)';
       console.log(`[AuthProvider] token guardado (${label}):`, short);
     }
@@ -129,10 +127,7 @@ export function AuthProvider({ children }) {
     if (error) throw error;
   }
 
-  const value = useMemo(
-    () => ({ session, user, role, loading, signIn, signOut }),
-    [session, user, role, loading]
-  );
+  const value = useMemo(() => ({ session, user, role, loading, signIn, signOut }), [session, user, role, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

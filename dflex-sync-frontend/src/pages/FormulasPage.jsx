@@ -1,3 +1,4 @@
+// src/pages/FormulasPage.jsx
 import { useEffect, useMemo, useState } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
