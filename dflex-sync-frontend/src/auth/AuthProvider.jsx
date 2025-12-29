@@ -25,6 +25,40 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let alive = true;
 
+    async function fetchRole(token) {
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'}/api/me`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) return 'viewer';
+        const me = await res.json();
+        return me?.role || 'viewer';
+      } catch {
+        return 'viewer';
+      }
+    }
+
+    function stashToken(token, label) {
+      // Guardar token para copiar desde DevTools:
+      //   window.__DFLEX_TOKEN__
+      // y para copiar al clipboard:
+      //   copy(window.__DFLEX_TOKEN__)
+      window.__DFLEX_TOKEN__ = token;
+
+      // También lo dejamos persistido en sessionStorage (solo pestaña actual)
+      try {
+        sessionStorage.setItem('__DFLEX_TOKEN__', token);
+      } catch {
+        // ignore
+      }
+
+      if (import.meta.env.DEV) {
+        const short = `${token.slice(0, 16)}...${token.slice(-8)}`;
+        console.log(`[AUTH_TOKEN] ${label} guardado en window.__DFLEX_TOKEN__ (short):`, short);
+      }
+    }
+
     async function init() {
       try {
         setLoading(true);
@@ -36,31 +70,12 @@ export function AuthProvider({ children }) {
         setSession(s);
         setUser(s?.user ?? null);
 
-        // DEBUG (solo DEV): loguea token para pegar en Insomnia
-        if (import.meta.env.DEV && s?.access_token) {
-          const t = s.access_token;
-          console.log('[Auth] access_token (short):', `${t.slice(0, 16)}...${t.slice(-8)}`);
-          console.log('[Auth] access_token (FULL):', t);
-        }
-
-        // Si tenés endpoint /api/me que devuelve role, lo podés usar acá:
         if (s?.access_token) {
-          try {
-            const res = await fetch(
-              `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'}/api/me`,
-              { headers: { Authorization: `Bearer ${s.access_token}` } }
-            );
-            if (res.ok) {
-              const me = await res.json();
-              if (alive && me?.role) setRole(me.role);
-            } else {
-              if (alive) setRole('viewer');
-            }
-          } catch {
-            if (alive) setRole('viewer');
-          }
+          stashToken(s.access_token, 'init');
+          const r = await fetchRole(s.access_token);
+          if (alive) setRole(r);
         } else {
-          setRole('viewer');
+          if (alive) setRole('viewer');
         }
       } finally {
         if (alive) setLoading(false);
@@ -73,29 +88,21 @@ export function AuthProvider({ children }) {
       setSession(newSession ?? null);
       setUser(newSession?.user ?? null);
 
-      // DEBUG (solo DEV): loguea token en cada cambio de sesión
-      if (import.meta.env.DEV && newSession?.access_token) {
-        const t = newSession.access_token;
-        console.log('[Auth] access_token (change, short):', `${t.slice(0, 16)}...${t.slice(-8)}`);
-        console.log('[Auth] access_token (change, FULL):', t);
-      }
-
       if (newSession?.access_token) {
-        try {
-          const res = await fetch(
-            `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'}/api/me`,
-            { headers: { Authorization: `Bearer ${newSession.access_token}` } }
-          );
-          if (res.ok) {
-            const me = await res.json();
-            setRole(me?.role || 'viewer');
-          } else {
-            setRole('viewer');
-          }
-        } catch {
-          setRole('viewer');
-        }
+        stashToken(newSession.access_token, 'change');
+        const r = await fetchRole(newSession.access_token);
+        setRole(r);
       } else {
+        try {
+          delete window.__DFLEX_TOKEN__;
+        } catch {
+          // ignore
+        }
+        try {
+          sessionStorage.removeItem('__DFLEX_TOKEN__');
+        } catch {
+          // ignore
+        }
         setRole('viewer');
       }
     });
@@ -126,6 +133,5 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-  // como el default ya es objeto, no rompe nunca
   return useContext(AuthContext);
 }
