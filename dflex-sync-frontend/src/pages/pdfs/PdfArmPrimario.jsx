@@ -72,7 +72,7 @@ const POS = {
     cliente: { x: 112.0, y: 528.0, size: 10, maxWidth: 280 },
     nv: { x: 124.0, y: 512.0, size: 10, maxWidth: 120 },
     razsoc: { x: 259.0, y: 512.0, size: 9, maxWidth: 260 },
-    revest: { x: 205.0, y: 496.5, size: 9, maxWidth: 220 },
+    revest: { x: 259.0, y: 496.5, size: 9, maxWidth: 220 },
     nsistema: { x: 140.0, y: 496.5, size: 9, maxWidth: 90 },
   },
 
@@ -118,6 +118,18 @@ const POS = {
     size: 10,
   },
 
+  huecoChicoLabel: {
+    y: 380,
+    x: 705,
+    size: 10,
+  },
+
+  huevoGrandeLabel: {
+    y: 345,
+    x: 705,
+    size: 10,
+  },
+
   right: {
     colorSis1: { x: 525.0, y: 244.0, size: 7, maxWidth: 80 },
     colorSis2: { x: 565.0, y: 244.0, size: 7, maxWidth: 120 },
@@ -126,7 +138,7 @@ const POS = {
 
     liston: { x: 525.0, y: 174.0, size: 9, maxWidth: 120 },
     vidrio: { x: 700.0, y: 174.0, size: 9, maxWidth: 120 },
-    lugar: { x: 525.0, y: 121.0, size: 8, maxWidth: 260 },
+    lugar: { x: 640.0, y: 138.0, size: 8, maxWidth: 260 },
   },
 };
 
@@ -149,7 +161,7 @@ function getDintelAnchoMM(row) {
 }
 
 function getAltoMM(row) {
-  return toMM(row.PIERNAS_Altura);
+  return toMM(row.Alto);
 }
 
 function getPiernasAlturaMM(row) {
@@ -306,6 +318,19 @@ export async function generatePdfArmadoPrimario(partida, rows) {
       const x = motorPos === 'DERECHA' ? POS.motorLabel.rightX : POS.motorLabel.leftX;
       drawFittedText(page, font, 'MOTOR', x, POS.motorLabel.y, { size: POS.motorLabel.size, maxWidth: 90 });
     }
+
+    // HUECOS (labels en esquema derecho)
+    drawFittedText(page, font, toStr(r.DATOS_Hueco_Chico), POS.huecoChicoLabel.x, POS.huecoChicoLabel.y, {
+      size: POS.huecoChicoLabel.size,
+      maxWidth: 90,
+      minSize: 6,
+    });
+
+    drawFittedText(page, font, toStr(r.DATOS_Hueco_Grande), POS.huevoGrandeLabel.x, POS.huevoGrandeLabel.y, {
+      size: POS.huevoGrandeLabel.size,
+      maxWidth: 90,
+      minSize: 6,
+    });
 
     // -------- PASO 1
     drawFittedText(page, font, normPiernaTipo(r), POS.paso1.piernasTipo.x, POS.paso1.piernasTipo.y, {
