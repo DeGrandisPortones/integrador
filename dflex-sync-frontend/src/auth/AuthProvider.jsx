@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-const POST_LOGIN_DELAY_MS = 4000; // <-- ACÁ cambiás el retardo (en ms)
+const POST_LOGIN_DELAY_MS = 0; // <-- ACÁ cambiás el retardo (en ms)
 
 const AuthContext = createContext({
   session: null,

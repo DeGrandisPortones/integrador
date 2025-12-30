@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const LS_VISIBLE_COLS_KEY = 'dflex_pp_visible_columns_v1';
 const LS_PAGE_SIZE_KEY = 'dflex_pp_page_size_v1';
 
+// Columnas "solo app" (no vienen de SQL, pero se editan y persisten en Supabase overlay)
+const APP_ONLY_COLS = ['Descripcion', 'Observaciones'];
+
 export default function TablePage({
   rows,
   columns,
@@ -20,6 +23,16 @@ export default function TablePage({
 }) {
   const canEditData = !!permissions?.canEditData;
   const canEditFormulas = !!permissions?.canEditFormulas;
+
+  // ✅ Asegura que SIEMPRE existan estas columnas en la tabla/menu
+  const allColumns = useMemo(() => {
+    const base = Array.isArray(columns) ? columns : [];
+    const set = new Set(base);
+    for (const c of APP_ONLY_COLS) {
+      if (!set.has(c)) base.push(c);
+    }
+    return base;
+  }, [columns]);
 
   // =========================
   // Ediciones manuales
@@ -99,27 +112,27 @@ export default function TablePage({
 
   useEffect(() => {
     if (!Array.isArray(visibleCols)) return;
-    const available = new Set(columns || []);
+    const available = new Set(allColumns || []);
     const filtered = visibleCols.filter((c) => available.has(c));
     setVisibleCols(filtered.length ? filtered : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns]);
+  }, [allColumns]);
 
   const filteredColumnsForMenu = useMemo(() => {
     const q = (colSearch || '').trim().toLowerCase();
-    if (!q) return columns || [];
-    return (columns || []).filter((c) => String(c).toLowerCase().includes(q));
-  }, [columns, colSearch]);
+    if (!q) return allColumns || [];
+    return (allColumns || []).filter((c) => String(c).toLowerCase().includes(q));
+  }, [allColumns, colSearch]);
 
   const effectiveColumns = useMemo(() => {
-    if (!Array.isArray(visibleCols)) return columns || [];
+    if (!Array.isArray(visibleCols)) return allColumns || [];
     const allowed = new Set(visibleCols);
-    return (columns || []).filter((c) => allowed.has(c));
-  }, [columns, visibleCols]);
+    return (allColumns || []).filter((c) => allowed.has(c));
+  }, [allColumns, visibleCols]);
 
   function toggleColumn(col) {
     setVisibleCols((current) => {
-      const all = columns || [];
+      const all = allColumns || [];
       const base = Array.isArray(current) ? current : [...all];
       const set = new Set(base);
 
@@ -143,14 +156,22 @@ export default function TablePage({
   }
 
   function selectMinimalColumns() {
-    const all = columns || [];
+    const all = allColumns || [];
     const minimal = [];
 
-    ['NV', 'PARTIDA', 'PARANTES_Descripcion', 'Largo_Parantes', 'DATOS_Brazos', 'lado_mas_alto', 'calc_espada'].forEach(
-      (k) => {
-        if (all.includes(k)) minimal.push(k);
-      }
-    );
+    [
+      'NV',
+      'PARTIDA',
+      'Descripcion',
+      'Observaciones',
+      'PARANTES_Descripcion',
+      'Largo_Parantes',
+      'DATOS_Brazos',
+      'lado_mas_alto',
+      'calc_espada',
+    ].forEach((k) => {
+      if (all.includes(k)) minimal.push(k);
+    });
 
     setVisibleCols(minimal.length ? minimal : (all.includes('NV') ? ['NV'] : all.slice(0, 1)));
   }
@@ -310,7 +331,7 @@ export default function TablePage({
                   </button>
 
                   <span className="hint" style={{ whiteSpace: 'nowrap' }}>
-                    Mostrando: <b>{effectiveColumns.length}</b> / {columns.length}
+                    Mostrando: <b>{effectiveColumns.length}</b> / {allColumns.length}
                   </span>
                 </div>
 

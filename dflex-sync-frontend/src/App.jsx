@@ -255,6 +255,9 @@ function MainApp({ session, signOut, role }) {
     Object.keys(formulas || {}).forEach((k) => set.add(k));
     ['lado_mas_alto', 'calc_espada'].forEach((k) => set.add(k));
 
+    // ✅ Columnas "solo app" (persisten en preproduccion_valores.data)
+    ['Descripcion', 'Observaciones'].forEach((k) => set.add(k));
+
     return Array.from(set);
   }, [hasData, rows, formulas]);
 
@@ -529,9 +532,6 @@ function MainApp({ session, signOut, role }) {
         <TablePage
           rows={rows}
           columns={columnsToShow}
-          allColumns={allColumns}
-          visibleColumns={visibleColumns}
-          onChangeVisibleColumns={handleChangeVisibleColumns}
           hasData={hasData}
           loading={loading}
           formulas={formulas}
@@ -555,7 +555,8 @@ function MainApp({ session, signOut, role }) {
         />
       )}
 
-      {currentPage === 'import' && <ImportPage rows={rows} columns={allColumns} />}
+      {currentPage === 'import' && <ImportPage rows={rows} columns={allColumns} authHeader={authHeader} />}
+
 
       {currentPage === 'pdf' && <ViewPdf />}
     </div>
