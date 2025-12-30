@@ -125,7 +125,7 @@ const POS = {
   },
 
   huevoGrandeLabel: {
-    y: 345,
+    y: 340,
     x: 705,
     size: 10,
   },
