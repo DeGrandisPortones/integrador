@@ -62,6 +62,89 @@ function drawFittedText(page, font, text, x, y, opts = {}) {
   page.drawText(finalText, { x, y, size: s, font, color });
 }
 
+// Texto en caja (multilínea) con ajuste por ancho y alto.
+// - Envuelve por palabras
+// - Si no entra, baja el tamaño hasta minSize
+// - Si aún no entra, trunca con "…"
+// IMPORTANTE: "y" se interpreta como el TOP del bloque, y el texto va bajando.
+function drawFittedTextBox(page, font, text, x, y, opts = {}) {
+  const {
+    size = 9,
+    minSize = 6,
+    maxWidth = 100,
+    maxHeight = 30,
+    lineHeight = 1.15,
+    color = rgb(0, 0, 0),
+  } = opts;
+
+  const t = toStr(text);
+  if (!t) return;
+
+  const paragraphs = t.replace(/\r\n/g, '\n').split('\n').map((p) => p.trim());
+
+  function wrapAtSize(fontSize) {
+    const lines = [];
+    for (const para of paragraphs) {
+      if (!para) {
+        lines.push('');
+        continue;
+      }
+      const words = para.split(/\s+/);
+      let current = '';
+      for (const w of words) {
+        const candidate = current ? `${current} ${w}` : w;
+        const width = font.widthOfTextAtSize(candidate, fontSize);
+        if (width <= maxWidth) {
+          current = candidate;
+        } else {
+          if (current) lines.push(current);
+
+          // Si una palabra sola es más larga que maxWidth, la cortamos
+          if (font.widthOfTextAtSize(w, fontSize) > maxWidth) {
+            let cut = w;
+            while (cut.length > 0 && font.widthOfTextAtSize(cut + '…', fontSize) > maxWidth) {
+              cut = cut.slice(0, -1);
+            }
+            lines.push(cut ? cut + '…' : '');
+            current = '';
+          } else {
+            current = w;
+          }
+        }
+      }
+      if (current) lines.push(current);
+    }
+    return lines;
+  }
+
+  const lh = (fontSize) => fontSize * lineHeight;
+
+  let s = size;
+  let lines = wrapAtSize(s);
+
+  while (s >= minSize && lines.length * lh(s) > maxHeight) {
+    s -= 0.5;
+    lines = wrapAtSize(s);
+  }
+
+  const maxLines = Math.max(1, Math.floor(maxHeight / lh(s)));
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    let last = lines[lines.length - 1] || '';
+    while (last.length > 0 && font.widthOfTextAtSize(last + '…', s) > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    lines[lines.length - 1] = last ? last + '…' : '…';
+  }
+
+  let cursorY = y;
+  for (const line of lines) {
+    page.drawText(line, { x, y: cursorY, size: s, font, color });
+    cursorY -= lh(s);
+    if (y - cursorY > maxHeight + lh(s)) break;
+  }
+}
+
 // =====================
 // Posiciones
 // =====================
@@ -136,6 +219,10 @@ const POS = {
     color1: { x: 525.0, y: 232.5, size: 7, maxWidth: 80 },
     color2: { x: 565.0, y: 232.5, size: 7, maxWidth: 120 },
 
+    // ✅ DESCRIPCIÓN: acá definís el "rectángulo" de texto (ancho/alto)
+    // y = TOP del bloque, el texto va bajando
+    descripcion: { x: 525.0, y: 210.0, size: 8, maxWidth: 190, maxHeight: 40 },
+
     liston: { x: 525.0, y: 174.0, size: 9, maxWidth: 120 },
     vidrio: { x: 700.0, y: 174.0, size: 9, maxWidth: 120 },
     lugar: { x: 640.0, y: 138.0, size: 8, maxWidth: 260 },
@@ -180,7 +267,7 @@ function calc244(row) {
   const ancho = getDintelAnchoMM(row);
   if (!ancho) return '';
   const tipo = normPiernaTipo(row);
-  const desc = tipo === 'ANCHA' ? 16 : tipo === 'ANGOSTA' ? 8 : 11;
+  const desc = tipo === 'ANCHA' ? 360 : tipo === 'ANGOSTA' ? 8 : 11;
   return String(Math.round(ancho - desc));
 }
 
@@ -370,10 +457,14 @@ export async function generatePdfArmadoPrimario(partida, rows) {
       maxWidth: POS.paso2.rbjSiNo.maxWidth,
     });
 
-    drawFittedText(page, font, rbjAncho ? String(Math.round(rbjAncho)) : '0', POS.paso2.rbjDesc.x, POS.paso2.rbjDesc.y, {
-      size: POS.paso2.rbjDesc.size,
-      maxWidth: POS.paso2.rbjDesc.maxWidth,
-    });
+    drawFittedText(
+      page,
+      font,
+      rbjAncho ? String(Math.round(rbjAncho)) : '0',
+      POS.paso2.rbjDesc.x,
+      POS.paso2.rbjDesc.y,
+      { size: POS.paso2.rbjDesc.size, maxWidth: POS.paso2.rbjDesc.maxWidth }
+    );
 
     drawFittedText(page, font, toStr(r.REBAJE_SINO), POS.paso2.rebSiNo.x, POS.paso2.rebSiNo.y, {
       size: POS.paso2.rebSiNo.size,
@@ -437,7 +528,7 @@ export async function generatePdfArmadoPrimario(partida, rows) {
       minSize: 6,
     });
 
-    // -------- Derecha PASO 5
+    // -------- Derecha: PASO 5 (colores)
     const [cs1, cs2] = splitTwoCells(r.Color_Sistema);
     drawFittedText(page, font, cs1, POS.right.colorSis1.x, POS.right.colorSis1.y, {
       size: POS.right.colorSis1.size,
@@ -464,7 +555,17 @@ export async function generatePdfArmadoPrimario(partida, rows) {
       minSize: 6,
     });
 
-    // -------- Derecha PASO 6
+    // ✅ DESCRIPCIÓN (lo que venga en "Descripcion")
+    const desc = r.Descripcion ?? r.DESCRIPCION ?? r.descripcion ?? '';
+    drawFittedTextBox(page, font, toStr(desc), POS.right.descripcion.x, POS.right.descripcion.y, {
+      size: POS.right.descripcion.size,
+      minSize: 6,
+      maxWidth: POS.right.descripcion.maxWidth,
+      maxHeight: POS.right.descripcion.maxHeight,
+      lineHeight: 1.15,
+    });
+
+    // -------- Derecha: PASO 6
     drawFittedText(page, font, toStr(r.Liston), POS.right.liston.x, POS.right.liston.y, {
       size: POS.right.liston.size,
       maxWidth: POS.right.liston.maxWidth,
