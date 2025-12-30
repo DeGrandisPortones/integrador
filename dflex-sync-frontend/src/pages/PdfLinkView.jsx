@@ -5,10 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { generatePdfDisenoLaserByPartida } from './pdfs/PdfDisenoLaser.jsx';
 import { generatePdfCortePlegadoByPartida } from './pdfs/PdfCortePlegado.jsx';
 import { generatePdfTapajuntasByPartida } from './pdfs/PdfTapajuntas.jsx';
-import {
-  generatePdfArmPrimarioByPartida,
-  generatePdfArmPrimarioByNv,
-} from './pdfs/PdfArmPrimario.jsx';
+import { generatePdfArmPrimarioByPartida, generatePdfArmPrimarioByNv } from './pdfs/PdfArmPrimario.jsx';
 
 // ✅ PDF.js
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
@@ -19,6 +16,25 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 function toStr(v) {
   if (v === null || v === undefined) return '';
   return String(v).trim();
+}
+
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function isPortraitTablet() {
+  const w = window.innerWidth || 0;
+  const h = window.innerHeight || 0;
+  if (!w || !h) return false;
+
+  const portrait = h >= w;
+  const shortSide = Math.min(w, h);
+  const longSide = Math.max(w, h);
+
+  // Heurística razonable: tablet típica en px CSS
+  const tabletLike = shortSide >= 600 && longSide <= 1600;
+
+  return portrait && tabletLike;
 }
 
 function getPdfTipoFromLocation() {
@@ -64,31 +80,30 @@ export default function PdfLinkView() {
   const lastRenderIdRef = useRef(0);
 
   const spec = useMemo(() => {
-    // ✅ 4 PDFs soportados (MODO PÚBLICO: NO token)
     const map = {
       'diseno-laser': {
         label: 'PDF Diseño Láser',
-        gen: ({ partida }) => generatePdfDisenoLaserByPartida(partida /* token = undefined */),
+        gen: ({ partida }) => generatePdfDisenoLaserByPartida(partida),
         filename: ({ partida }) => `Partida_${partida}_DisenoLaser.pdf`,
         needs: 'partida',
       },
       'corte-plegado': {
         label: 'PDF Corte y Plegado',
-        gen: ({ partida }) => generatePdfCortePlegadoByPartida(partida /* token = undefined */),
+        gen: ({ partida }) => generatePdfCortePlegadoByPartida(partida),
         filename: ({ partida }) => `Partida_${partida}_CortePlegado.pdf`,
         needs: 'partida',
       },
       tapajuntas: {
         label: 'PDF Tapajuntas',
-        gen: ({ partida }) => generatePdfTapajuntasByPartida(partida /* token = undefined */),
+        gen: ({ partida }) => generatePdfTapajuntasByPartida(partida),
         filename: ({ partida }) => `Partida_${partida}_Tapajuntas.pdf`,
         needs: 'partida',
       },
       'arm-primario': {
         label: 'PDF Armado Primario',
         gen: ({ nv, partida }) => {
-          if (nv) return generatePdfArmPrimarioByNv(nv /* token = undefined */);
-          return generatePdfArmPrimarioByPartida(partida /* token = undefined */);
+          if (nv) return generatePdfArmPrimarioByNv(nv);
+          return generatePdfArmPrimarioByPartida(partida);
         },
         filename: ({ nv, partida }) => {
           if (nv) return `NV_${nv}_ArmadoPrimario.pdf`;
@@ -114,15 +129,24 @@ export default function PdfLinkView() {
     const myRenderId = ++lastRenderIdRef.current;
     setRendering(true);
 
+    // ========= Ajustes de calidad =========
+    // Subí/bajá estos números si querés más/menos “definición”
+    const QUALITY_BOOST_PORTRAIT_TABLET = 2.0; // tablets vertical
+    const QUALITY_BOOST_DEFAULT = 1.4; // desktop / mobile
+    const MAX_SCALE_TO_FIT = 4.0; // antes 3
+    const MAX_CANVAS_PIXELS = 20_000_000; // cap de memoria por canvas (20MP)
+
     try {
       clearContainer();
 
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const pdf = await loadingTask.promise;
 
+      const portraitTablet = isPortraitTablet();
+      const qualityBoost = portraitTablet ? QUALITY_BOOST_PORTRAIT_TABLET : QUALITY_BOOST_DEFAULT;
+
       // Render 1 canvas por página
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
-        // Cancelación “suave” si llega un nuevo render
         if (myRenderId !== lastRenderIdRef.current) return;
 
         const page = await pdf.getPage(pageNum);
@@ -131,24 +155,49 @@ export default function PdfLinkView() {
         const baseViewport = page.getViewport({ scale: 1 });
 
         // Ajuste al ancho del contenedor
-        const containerWidth = el.clientWidth || window.innerWidth || 800;
-        const scaleToFit = Math.max(0.5, Math.min(3, containerWidth / baseViewport.width));
+        const containerWidth =
+          el.clientWidth ||
+          document.documentElement.clientWidth ||
+          window.innerWidth ||
+          800;
 
-        // Retina / Android: devicePixelRatio
-        const dpr = window.devicePixelRatio || 1;
+        const scaleToFitRaw = containerWidth / baseViewport.width;
+        const scaleToFit = clamp(scaleToFitRaw, 0.5, MAX_SCALE_TO_FIT);
 
-        const viewport = page.getViewport({ scale: scaleToFit });
+        // DPR reportado por el navegador (a veces da 1 en tablets)
+        const dprReported = window.devicePixelRatio || 1;
+        const dpr = clamp(dprReported, 1, 3); // cap para no matar memoria
+
+        // Vista “visual” (CSS) al ancho
+        const cssViewport = page.getViewport({ scale: scaleToFit });
+
+        // Escala real interna (más píxeles)
+        let renderScale = scaleToFit * dpr * qualityBoost;
+        let renderViewport = page.getViewport({ scale: renderScale });
+
+        // Cap de pixeles (por si queda gigante)
+        let targetW = Math.floor(renderViewport.width);
+        let targetH = Math.floor(renderViewport.height);
+        const pixels = targetW * targetH;
+
+        if (pixels > MAX_CANVAS_PIXELS) {
+          const factor = Math.sqrt(MAX_CANVAS_PIXELS / pixels);
+          renderScale = renderScale * factor;
+          renderViewport = page.getViewport({ scale: renderScale });
+          targetW = Math.floor(renderViewport.width);
+          targetH = Math.floor(renderViewport.height);
+        }
 
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Tamaño “real” (en pixeles)
-        canvas.width = Math.floor(viewport.width * dpr);
-        canvas.height = Math.floor(viewport.height * dpr);
+        // Tamaño real (en pixeles)
+        canvas.width = targetW;
+        canvas.height = targetH;
 
-        // Tamaño “visual” (CSS)
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        // Tamaño visual (CSS)
+        canvas.style.width = `${Math.floor(cssViewport.width)}px`;
+        canvas.style.height = `${Math.floor(cssViewport.height)}px`;
 
         canvas.style.display = 'block';
         canvas.style.margin = pageNum === 1 ? '12px auto 14px' : '0 auto 14px';
@@ -158,9 +207,12 @@ export default function PdfLinkView() {
 
         el.appendChild(canvas);
 
+        // Render
         const renderContext = {
           canvasContext: ctx,
-          viewport: page.getViewport({ scale: scaleToFit * dpr }),
+          viewport: renderViewport,
+          // opcional (según versión): intent: 'display',
+          // opcional: enableWebGL: true,
         };
 
         await page.render(renderContext).promise;
@@ -205,14 +257,12 @@ export default function PdfLinkView() {
         const name = spec.filename({ partida: req.partida, nv: req.nv });
         setFilename(name);
 
-        // Generás el PDF como Blob (como ahora)
         const blob = await spec.gen({ partida: req.partida, nv: req.nv });
         if (!alive) return;
 
         const buf = await blob.arrayBuffer();
         if (!alive) return;
 
-        // ✅ Render con PDF.js (sin iframe, sin blobUrl)
         await renderPdfToCanvas(buf);
       } catch (e) {
         if (!alive) return;
@@ -228,7 +278,6 @@ export default function PdfLinkView() {
 
     return () => {
       alive = false;
-      // invalidar renders en curso
       lastRenderIdRef.current += 1;
       clearContainer();
     };
@@ -287,7 +336,6 @@ export default function PdfLinkView() {
         {(loading || rendering) && <div>Mostrando PDF…</div>}
         {error && <div style={{ color: 'crimson' }}>⚠ {error}</div>}
 
-        {/* ✅ Contenedor de canvases */}
         <div ref={containerRef} style={{ width: '100%', minHeight: '60vh' }} />
       </div>
 
