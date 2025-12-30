@@ -267,7 +267,7 @@ function calc244(row) {
   const ancho = getDintelAnchoMM(row);
   if (!ancho) return '';
   const tipo = normPiernaTipo(row);
-  const desc = tipo === 'ANCHA' ? 360 : tipo === 'ANGOSTA' ? 8 : 11;
+  const desc = tipo === 'ANCHA' ? 360 : tipo === 'ANGOSTA' ? 220 : 270;
   return String(Math.round(ancho - desc));
 }
 
