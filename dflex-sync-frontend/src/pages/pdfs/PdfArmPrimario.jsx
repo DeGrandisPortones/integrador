@@ -266,14 +266,18 @@ function getPiernasAlturaMM(row) {
 function calc244(row) {
   const ancho = getDintelAnchoMM(row);
   if (!ancho) return '';
+
   const tipo = normPiernaTipo(row);
+  const rebaje = toStr(row.REBAJE_SINO).toUpperCase();
+
   const desc =
-  r.REBAJE_SINO === 'SI'
-    ? (tipo === 'ANCHA' ? 375 : tipo === 'ANGOSTA' ? 235 : 275)
-    : (tipo === 'ANCHA' ? 370 : tipo === 'ANGOSTA' ? 230 : 270);
+    rebaje === 'SI'
+      ? (tipo === 'ANCHA' ? 375 : tipo === 'ANGOSTA' ? 235 : 275)
+      : (tipo === 'ANCHA' ? 370 : tipo === 'ANGOSTA' ? 230 : 270);
 
   return String(Math.round(ancho - desc));
 }
+
 
 function splitTwoCells(text) {
   const s = toStr(text);
