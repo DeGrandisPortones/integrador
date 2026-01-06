@@ -267,7 +267,11 @@ function calc244(row) {
   const ancho = getDintelAnchoMM(row);
   if (!ancho) return '';
   const tipo = normPiernaTipo(row);
-  const desc = tipo === 'ANCHA' ? 360 : tipo === 'ANGOSTA' ? 220 : 270;
+  const desc =
+  REBAJE_SINO === 'SI'
+    ? (tipo === 'ANCHA' ? 375 : tipo === 'ANGOSTA' ? 235 : 275)
+    : (tipo === 'ANCHA' ? 370 : tipo === 'ANGOSTA' ? 230 : 270);
+
   return String(Math.round(ancho - desc));
 }
 
