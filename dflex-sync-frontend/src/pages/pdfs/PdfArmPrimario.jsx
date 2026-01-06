@@ -268,7 +268,7 @@ function calc244(row) {
   if (!ancho) return '';
   const tipo = normPiernaTipo(row);
   const desc =
-  REBAJE_SINO === 'SI'
+  r.REBAJE_SINO === 'SI'
     ? (tipo === 'ANCHA' ? 375 : tipo === 'ANGOSTA' ? 235 : 275)
     : (tipo === 'ANCHA' ? 370 : tipo === 'ANGOSTA' ? 230 : 270);
 
