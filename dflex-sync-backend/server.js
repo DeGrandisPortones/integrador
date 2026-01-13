@@ -497,19 +497,20 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
     computed.calc_espada = rawRow.calc_espada;
   }
 
-  const payload = { ...manualOverrides, ...computed };
+  const payload = { ...baseRow, ...manualOverrides, ...computed };
 
-  await supabasePool.query(
-    `
-      INSERT INTO preproduccion_valores (id, nv, data)
-      VALUES ($1, $2, $3::jsonb)
-      ON CONFLICT (nv)
-      DO UPDATE SET
-        data = EXCLUDED.data,
-        updated_at = now()
-    `,
-    [idVal, nvVal, JSON.stringify(payload)]
-  );
+await supabasePool.query(
+  `
+    INSERT INTO preproduccion_valores (id, nv, data)
+    VALUES ($1, $2, $3::jsonb)
+    ON CONFLICT (nv)
+    DO UPDATE SET
+      data = EXCLUDED.data,
+      updated_at = now()
+  `,
+  [idVal, nvVal, JSON.stringify(payload)]
+);
+
 }
 
 // =====================
