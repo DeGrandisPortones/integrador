@@ -35,6 +35,27 @@ function todayDDMMYY() {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy}`;
 }
 
+
+function normalizeYYYYMMDD(v) {
+  const s = toStr(v);
+  if (!s) return '';
+
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return '';
+}
+
+function yyyymmddToDDMMYY(yyyymmdd) {
+  const s = normalizeYYYYMMDD(yyyymmdd);
+  if (!s) return '';
+  const [Y, M, D] = s.split('-');
+  return `${D}-${M}-${Y.slice(-2)}`;
+}
+
 // Heurística: si viene en cm (<500), pasamos a mm (*10). Si ya es mm, queda igual.
 function toMM(n) {
   const v = toNum(n);
@@ -165,6 +186,24 @@ async function fetchValoresByPartida(partida, accessToken) {
   return Array.isArray(data?.rows) ? data.rows : [];
 }
 
+async function fetchValoresByFechaProduccion(fechaProduccion, accessToken) {
+  const f = normalizeYYYYMMDD(fechaProduccion);
+  if (!f) return [];
+
+  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?fecha_envio_produccion=${encodeURIComponent(f)}`;
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+
+  const res = await fetch(url, headers ? { headers } : undefined);
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
 // =====================
 // Export público
 // =====================
@@ -261,7 +300,19 @@ export async function generatePdfTapajuntasByPartida(partida, accessToken) {
   return generatePdfTapajuntas(partida, null, accessToken);
 }
 
+export async function generatePdfTapajuntasByFechaProduccion(fechaProduccion, accessToken) {
+  const f = normalizeYYYYMMDD(fechaProduccion);
+  if (!f) throw new Error('Falta parámetro "fecha" (YYYY-MM-DD)');
+
+  const rows = await fetchValoresByFechaProduccion(f, accessToken);
+  if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para fecha_envio_produccion=${f}`);
+
+  const headerKey = yyyymmddToDDMMYY(f) || f;
+  return generatePdfTapajuntas(headerKey, rows, accessToken);
+}
+
 export default {
   generatePdfTapajuntas,
   generatePdfTapajuntasByPartida,
+  generatePdfTapajuntasByFechaProduccion,
 };

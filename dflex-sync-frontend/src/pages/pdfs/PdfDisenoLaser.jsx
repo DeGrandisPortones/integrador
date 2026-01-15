@@ -27,6 +27,26 @@ function todayDDMMYY() {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy}`;
 }
 
+function normalizeYYYYMMDD(v) {
+  const s = toStr(v);
+  if (!s) return '';
+
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return '';
+}
+
+function yyyymmddToDDMMYY(yyyymmdd) {
+  const s = normalizeYYYYMMDD(yyyymmdd);
+  if (!s) return '';
+  const [Y, M, D] = s.split('-');
+  return `${D}-${M}-${Y.slice(-2)}`;
+}
+
 function drawFittedText(page, font, text, x, y, opts = {}) {
   const { size = 9, minSize = 6, maxWidth = null, color = rgb(0, 0, 0) } = opts;
 
@@ -63,11 +83,12 @@ function getValoresEndpoint(accessToken) {
   return accessToken ? '/api/pre-produccion-valores' : '/api/public/pre-produccion-valores';
 }
 
-async function fetchValoresByPartida(partida, accessToken) {
-  const p = toStr(partida);
-  if (!p) return [];
+// NUEVO: fetch por fecha_envio_produccion (día)
+async function fetchValoresByFechaProduccion(fechaProduccion, accessToken) {
+  const f = normalizeYYYYMMDD(fechaProduccion);
+  if (!f) return [];
 
-  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?partida=${encodeURIComponent(p)}`;
+  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?fecha_envio_produccion=${encodeURIComponent(f)}`;
   const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
   const res = await fetch(url, headers ? { headers } : undefined);
@@ -238,14 +259,11 @@ const POS = {
 };
 
 // =====================
-// Generación PDF
+// Generación PDF (por filas ya obtenidas)
 // =====================
-export async function generatePdfDisenoLaser(partida, rows, accessToken) {
-  const p = toStr(partida);
-  if (!p) throw new Error('Partida vacía');
-
-  const safeRows = Array.isArray(rows) ? rows : await fetchValoresByPartida(p, accessToken);
-  if (!safeRows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
+async function buildPdfDisenoLaser({ headerKey, rows }) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) throw new Error('No hay filas para generar el PDF');
 
   const base = import.meta.env.BASE_URL || '/';
   const templateUrl = `${base}${TEMPLATE_FILENAME}`;
@@ -272,12 +290,16 @@ export async function generatePdfDisenoLaser(partida, rows, accessToken) {
     const [page] = await outDoc.copyPages(templateDoc, [0]);
     outDoc.addPage(page);
 
-    // Header
-    drawFittedText(page, font, p, POS.header.partidaX, POS.header.partidaY, {
+    // Header: en el lugar “partida”, ponemos la fecha (dd-mm-yy)
+    const key = toStr(headerKey);
+    const keyPretty = normalizeYYYYMMDD(key) ? yyyymmddToDDMMYY(key) : key;
+
+    drawFittedText(page, font, keyPretty, POS.header.partidaX, POS.header.partidaY, {
       size: POS.header.size,
-      maxWidth: 120,
+      maxWidth: 140,
     });
 
+    // Fecha de impresión
     drawFittedText(page, font, todayDDMMYY(), POS.header.fechaX, POS.header.fechaY, {
       size: POS.header.size,
       maxWidth: 80,
@@ -397,11 +419,19 @@ export async function generatePdfDisenoLaser(partida, rows, accessToken) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-export async function generatePdfDisenoLaserByPartida(partida, accessToken) {
-  return generatePdfDisenoLaser(partida, null, accessToken);
+// =====================
+// API pública: por fecha de producción
+// =====================
+export async function generatePdfDisenoLaserByFechaProduccion(fechaProduccion, accessToken) {
+  const f = normalizeYYYYMMDD(fechaProduccion);
+  if (!f) throw new Error('Falta parámetro "fecha" (YYYY-MM-DD)');
+
+  const rows = await fetchValoresByFechaProduccion(f, accessToken);
+  if (!rows.length) throw new Error(`No hay filas para fecha_envio_produccion=${f}`);
+
+  return buildPdfDisenoLaser({ headerKey: f, rows });
 }
 
 export default {
-  generatePdfDisenoLaser,
-  generatePdfDisenoLaserByPartida,
+  generatePdfDisenoLaserByFechaProduccion,
 };

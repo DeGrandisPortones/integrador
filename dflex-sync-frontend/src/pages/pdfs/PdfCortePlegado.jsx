@@ -33,6 +33,27 @@ function todayDDMMYY() {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy}`;
 }
 
+
+function normalizeYYYYMMDD(v) {
+  const s = toStr(v);
+  if (!s) return '';
+
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return '';
+}
+
+function yyyymmddToDDMMYY(yyyymmdd) {
+  const s = normalizeYYYYMMDD(yyyymmdd);
+  if (!s) return '';
+  const [Y, M, D] = s.split('-');
+  return `${D}-${M}-${Y.slice(-2)}`;
+}
+
 function normTipoPierna(v) {
   const s = toStr(v).toUpperCase();
   if (s.includes('ANCHA')) return 'ANCHA';
@@ -155,6 +176,24 @@ async function fetchValoresByPartida(partida, accessToken) {
   return Array.isArray(data?.rows) ? data.rows : [];
 }
 
+async function fetchValoresByFechaProduccion(fechaProduccion, accessToken) {
+  const f = normalizeYYYYMMDD(fechaProduccion);
+  if (!f) return [];
+
+  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?fecha_envio_produccion=${encodeURIComponent(f)}`;
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+
+  const res = await fetch(url, headers ? { headers } : undefined);
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data?.rows) ? data.rows : [];
+}
+
 // =====================
 // PDF builder (EXPORTADO)
 // =====================
@@ -236,7 +275,19 @@ export async function generatePdfCortePlegadoByPartida(partida, accessToken) {
   return generatePdfCortePlegado(partida, null, accessToken);
 }
 
+export async function generatePdfCortePlegadoByFechaProduccion(fechaProduccion, accessToken) {
+  const f = normalizeYYYYMMDD(fechaProduccion);
+  if (!f) throw new Error('Falta parámetro "fecha" (YYYY-MM-DD)');
+
+  const rows = await fetchValoresByFechaProduccion(f, accessToken);
+  if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para fecha_envio_produccion=${f}`);
+
+  const headerKey = yyyymmddToDDMMYY(f) || f;
+  return generatePdfCortePlegado(headerKey, rows, accessToken);
+}
+
 export default {
   generatePdfCortePlegado,
   generatePdfCortePlegadoByPartida,
+  generatePdfCortePlegadoByFechaProduccion,
 };

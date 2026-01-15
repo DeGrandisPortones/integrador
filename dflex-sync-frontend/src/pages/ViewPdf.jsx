@@ -3,13 +3,12 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider.jsx';
 
 // Arm Primario
-import {
-  generatePdfArmPrimarioByNv,
-  generatePdfArmPrimarioByPartida,
-} from './pdfs/PdfArmPrimario.jsx';
+import { generatePdfArmPrimarioByNv, generatePdfArmPrimarioByPartida } from './pdfs/PdfArmPrimario.jsx';
 
 // Imports estáticos
-import { generatePdfDisenoLaserByPartida } from './pdfs/PdfDisenoLaser.jsx';
+import { generatePdfDisenoLaserByFechaProduccion } from './pdfs/PdfDisenoLaser.jsx';
+import { generatePdfCortePlegadoByFechaProduccion } from './pdfs/PdfCortePlegado.jsx';
+import { generatePdfTapajuntasByFechaProduccion } from './pdfs/PdfTapajuntas.jsx';
 import { generatePdfCortePlegadoByPartida } from './pdfs/PdfCortePlegado.jsx';
 import { generatePdfTapajuntasByPartida } from './pdfs/PdfTapajuntas.jsx';
 
@@ -18,15 +17,30 @@ function toStr(v) {
   return String(v).trim();
 }
 
+function normalizeYYYYMMDD(v) {
+  const s = toStr(v);
+  if (!s) return '';
+
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return '';
+}
+
 export default function ViewPdf() {
   const [partida, setPartida] = useState('');
   const [nv, setNv] = useState('');
+  const [fechaProd, setFechaProd] = useState(''); // ✅ nuevo: fecha de producción
 
   const [loadingKey, setLoadingKey] = useState('');
   const [error, setError] = useState('');
 
   const canPartida = useMemo(() => toStr(partida).length > 0, [partida]);
   const canNv = useMemo(() => toStr(nv).length > 0, [nv]);
+  const canFechaProd = useMemo(() => normalizeYYYYMMDD(fechaProd).length > 0, [fechaProd]);
 
   const { session } = useAuth();
   const accessToken = session?.access_token || null;
@@ -90,25 +104,70 @@ export default function ViewPdf() {
             placeholder="Ej: 4003"
           />
         </label>
+
+        <label>
+          FECHA PROD (YYYY-MM-DD):&nbsp;
+          <input
+            type="text"
+            value={fechaProd}
+            onChange={(e) => setFechaProd(e.target.value)}
+            placeholder="Ej: 2026-01-13"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <h3 style={{ margin: '12px 0 6px' }}>Diseño Laser (por FECHA de producción)</h3>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canFechaProd || anyLoading || !accessToken}
+            onClick={() => {
+              const f = normalizeYYYYMMDD(fechaProd);
+              run(`Fecha_${f}_DisenoLaser.pdf`, async (token) => {
+                return generatePdfDisenoLaserByFechaProduccion(f, token);
+              });
+            }}
+          >
+            {anyLoading ? '...' : 'PDF Diseño Laser'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canFechaProd || anyLoading || !accessToken}
+            onClick={() => {
+              const f = normalizeYYYYMMDD(fechaProd);
+              run(`Fecha_${f}_CortePlegado.pdf`, async (token) => {
+                return generatePdfCortePlegadoByFechaProduccion(f, token);
+              });
+            }}
+          >
+            {anyLoading ? '...' : 'PDF Corte y Plegado'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canFechaProd || anyLoading || !accessToken}
+            onClick={() => {
+              const f = normalizeYYYYMMDD(fechaProd);
+              run(`Fecha_${f}_Tapajuntas.pdf`, async (token) => {
+                return generatePdfTapajuntasByFechaProduccion(f, token);
+              });
+            }}
+          >
+            {anyLoading ? '...' : 'PDF Tapajuntas'}
+          </button>
+        </div>
       </div>
 
       <div style={{ marginTop: 12 }}>
         <h3 style={{ margin: '12px 0 6px' }}>Por PARTIDA</h3>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={!canPartida || anyLoading || !accessToken}
-            onClick={() =>
-              run(`Partida_${toStr(partida)}_DisenoLaser.pdf`, async (token) => {
-                return generatePdfDisenoLaserByPartida(toStr(partida), token);
-              })
-            }
-          >
-            {anyLoading ? '...' : 'PDF Diseño Laser'}
-          </button>
-
           <button
             type="button"
             className="btn-secondary"

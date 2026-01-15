@@ -80,6 +80,38 @@ if (!supabaseAdmin) {
 }
 
 // =====================
+// HELPERS
+// =====================
+
+function normalizeYYYYMMDD(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v).trim();
+  if (!s) return '';
+
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return '';
+}
+
+// Rango diario UTC: [YYYY-MM-DDT00:00Z, +1 día)
+function dayRangeUtc(yyyy_mm_dd) {
+  const f = normalizeYYYYMMDD(yyyy_mm_dd);
+  if (!f) return null;
+
+  const start = new Date(`${f}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+
+  return { startISO: start.toISOString(), endISO: end.toISOString(), day: f };
+}
+
+// =====================
 // AUTH / ROLES
 // =====================
 
@@ -448,7 +480,6 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
   const nvVal = rawRow.NV !== null && rawRow.NV !== undefined ? parseInt(rawRow.NV, 10) : null;
   if (!nvVal || Number.isNaN(nvVal)) return;
 
-  // ✅ mismo enfoque que preproduccion_sql: forzar id
   const idVal = rawRow.ID ?? rawRow.Id ?? rawRow.id;
   if (idVal == null) {
     console.warn('Fila sin ID para preproduccion_valores, NV', nvVal);
@@ -499,25 +530,24 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
 
   const payload = { ...baseRow, ...manualOverrides, ...computed };
 
-await supabasePool.query(
-  `
-    INSERT INTO preproduccion_valores (id, nv, data)
-    VALUES ($1, $2, $3::jsonb)
-    ON CONFLICT (nv)
-    DO UPDATE SET
-      data = EXCLUDED.data,
-      updated_at = now()
-  `,
-  [idVal, nvVal, JSON.stringify(payload)]
-);
-
+  await supabasePool.query(
+    `
+      INSERT INTO preproduccion_valores (id, nv, data)
+      VALUES ($1, $2, $3::jsonb)
+      ON CONFLICT (nv)
+      DO UPDATE SET
+        data = EXCLUDED.data,
+        updated_at = now()
+    `,
+    [idVal, nvVal, JSON.stringify(payload)]
+  );
 }
 
 // =====================
 // LECTURA "DEFINITIVA"
 // =====================
 
-async function getPreProduccionSqlRowsFromSupabase({ nv, partida } = {}) {
+async function getPreProduccionSqlRowsFromSupabase({ nv, partida, fecha_envio_produccion } = {}) {
   if (!supabasePool) throw new Error('SUPABASE_DB_URL no está configurado');
 
   let sqlText = 'SELECT nv, data FROM preproduccion_sql';
@@ -537,6 +567,20 @@ async function getPreProduccionSqlRowsFromSupabase({ nv, partida } = {}) {
     where.push(`COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${params.length}`);
   }
 
+  if (fecha_envio_produccion) {
+    const rng = dayRangeUtc(fecha_envio_produccion);
+    if (rng) {
+      params.push(rng.startISO);
+      const p1 = params.length;
+      params.push(rng.endISO);
+      const p2 = params.length;
+
+      where.push(
+        `(NULLIF(data->>'fecha_envio_produccion','')::timestamptz >= $${p1} AND NULLIF(data->>'fecha_envio_produccion','')::timestamptz < $${p2})`
+      );
+    }
+  }
+
   if (where.length) {
     sqlText += ' WHERE ' + where.join(' AND ');
   }
@@ -551,10 +595,18 @@ async function getPreProduccionSqlRowsFromSupabase({ nv, partida } = {}) {
   });
 }
 
-async function getPreProduccionValoresRows({ nv, partida } = {}) {
+async function getPreProduccionValoresRows({ nv, partida, fecha_envio_produccion } = {}) {
   if (!supabasePool) throw new Error('SUPABASE_DB_URL no está configurado');
 
-  const baseRows = await getPreProduccionSqlRowsFromSupabase({ nv, partida });
+  // ======================================================
+  // Importante (caso fecha_envio_produccion):
+  // - La fecha de producción vive en "preproduccion_valores" (campos imputados).
+  // - Muchas veces NO está en "preproduccion_sql".
+  // Si filtramos baseRows por fecha, nos quedamos sin el "base" y el merge
+  // devuelve filas incompletas.
+  // Solución: si hay filtro por fecha, primero buscamos los NV en valores y luego
+  // traemos baseRows por esos NV (sin exigir que el base tenga la fecha).
+  // ======================================================
 
   let sqlText = 'SELECT nv, data FROM preproduccion_valores';
   const where = [];
@@ -573,6 +625,20 @@ async function getPreProduccionValoresRows({ nv, partida } = {}) {
     where.push(`COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${params.length}`);
   }
 
+  if (fecha_envio_produccion) {
+    const rng = dayRangeUtc(fecha_envio_produccion);
+    if (rng) {
+      params.push(rng.startISO);
+      const p1 = params.length;
+      params.push(rng.endISO);
+      const p2 = params.length;
+
+      where.push(
+        `(NULLIF(data->>'fecha_envio_produccion','')::timestamptz >= $${p1} AND NULLIF(data->>'fecha_envio_produccion','')::timestamptz < $${p2})`
+      );
+    }
+  }
+
   if (where.length) {
     sqlText += ' WHERE ' + where.join(' AND ');
   }
@@ -583,6 +649,43 @@ async function getPreProduccionValoresRows({ nv, partida } = {}) {
     const obj = r?.data && typeof r.data === 'object' ? r.data : {};
     return { ...obj, NV: r.nv };
   });
+
+  // --- baseRows ---
+  let baseRows = [];
+  if (fecha_envio_produccion) {
+    // Si vino nv puntual, usamos la lectura normal
+    if (nv) {
+      baseRows = await getPreProduccionSqlRowsFromSupabase({ nv, partida });
+    } else {
+      const nvList = overlayRows
+        .map((r) => parseInt(r?.NV, 10))
+        .filter((n) => Number.isFinite(n));
+
+      if (nvList.length) {
+        // Traemos base por lista de NV, con filtro de partida si aplica
+        let baseSql = 'SELECT nv, data FROM preproduccion_sql WHERE nv = ANY($1::int[])';
+        const baseParams = [nvList];
+
+        if (partida) {
+          baseParams.push(String(partida).trim());
+          baseSql += ` AND COALESCE(data->>'PARTIDA', data->>'Partida', data->>'partida') = $${baseParams.length}`;
+        }
+
+        baseSql += ' ORDER BY nv';
+
+        const { rows: baseRaw } = await supabasePool.query(baseSql, baseParams);
+        baseRows = (baseRaw || []).map((r) => {
+          const obj = r?.data && typeof r.data === 'object' ? r.data : {};
+          return { ...obj, NV: r.nv };
+        });
+      } else {
+        baseRows = [];
+      }
+    }
+  } else {
+    // Sin fecha: lectura normal (nv/partida)
+    baseRows = await getPreProduccionSqlRowsFromSupabase({ nv, partida });
+  }
 
   const overlayByNv = new Map();
   for (const r of overlayRows) {
@@ -848,8 +951,6 @@ async function syncPreproduccionToSupabaseFromSqlRows(sqlRows) {
 
 // =====================
 // SYNC ASYNC (OPCIÓN A)
-// - No bloquea la respuesta de /api/pre-produccion
-// - Dedup por NV y cola simple
 // =====================
 
 let syncRunning = false;
@@ -875,7 +976,6 @@ function schedulePreproduccionSyncWorker() {
   setImmediate(async () => {
     try {
       while (syncQueueByNv.size > 0) {
-        // Tomamos un batch y vaciamos cola
         const batch = Array.from(syncQueueByNv.values());
         syncQueueByNv.clear();
 
@@ -888,7 +988,6 @@ function schedulePreproduccionSyncWorker() {
     } finally {
       syncRunning = false;
 
-      // Si entraron cosas mientras corría, reprogramamos
       if (syncQueueByNv.size > 0) {
         schedulePreproduccionSyncWorker();
       }
@@ -922,7 +1021,6 @@ app.get('/api/me', requireAuth, attachRole, (req, res) => {
 // PUBLIC (solo para modo PDF link)
 // =====================
 
-// Lectura pública de fórmulas (solo si el PdfLinkView lo requiere)
 app.get('/api/public/formulas', async (_req, res) => {
   try {
     const formulas = await getAllColumnFormulas();
@@ -937,11 +1035,13 @@ app.get('/api/public/formulas', async (_req, res) => {
 });
 
 // Lectura pública de "valores definitivos" (para generar PDF por link)
+// AHORA soporta: nv, partida, fecha, fecha_envio_produccion
 app.get('/api/public/pre-produccion-valores', async (req, res) => {
-  const { nv, partida } = req.query;
+  const { nv, partida, fecha, fecha_envio_produccion } = req.query;
+  const f = fecha_envio_produccion || fecha;
 
   try {
-    const rows = await getPreProduccionValoresRows({ nv, partida });
+    const rows = await getPreProduccionValoresRows({ nv, partida, fecha_envio_produccion: f });
     return res.json({ count: rows.length, rows });
   } catch (err) {
     console.error('Error en /api/public/pre-produccion-valores:', err);
@@ -1095,7 +1195,6 @@ app.get('/api/pre-produccion', requireAuth, attachRole, async (req, res) => {
   try {
     const rows = await getPreProduccionRows(nv);
 
-    // ✅ OPCIÓN A: NO BLOQUEAR RESPUESTA CON SYNC
     try {
       if (rows.length && supabasePool) {
         enqueuePreproduccionSync(rows);
@@ -1114,11 +1213,13 @@ app.get('/api/pre-produccion', requireAuth, attachRole, async (req, res) => {
   }
 });
 
+// AHORA soporta: nv, partida, fecha, fecha_envio_produccion
 app.get('/api/pre-produccion-valores', requireAuth, attachRole, async (req, res) => {
-  const { nv, partida } = req.query;
+  const { nv, partida, fecha, fecha_envio_produccion } = req.query;
+  const f = fecha_envio_produccion || fecha;
 
   try {
-    const rows = await getPreProduccionValoresRows({ nv, partida });
+    const rows = await getPreProduccionValoresRows({ nv, partida, fecha_envio_produccion: f });
     return res.json({ count: rows.length, rows });
   } catch (err) {
     console.error('Error en /api/pre-produccion-valores:', err);
@@ -1213,10 +1314,8 @@ app.post(
           continue;
         }
 
-        // ✅ mismo criterio: necesitamos id para no violar NOT NULL
         const idVal = u?.id ?? u?.ID ?? null;
 
-        // Si el front no manda id, lo buscamos por nv en preproduccion_sql
         let effectiveId = idVal;
         if (effectiveId == null) {
           const r = await client.query('SELECT id FROM preproduccion_sql WHERE nv = $1 LIMIT 1', [nvParsed]);

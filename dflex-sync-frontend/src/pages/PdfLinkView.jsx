@@ -2,9 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 // ✅ generadores
-import { generatePdfDisenoLaserByPartida } from './pdfs/PdfDisenoLaser.jsx';
-import { generatePdfCortePlegadoByPartida } from './pdfs/PdfCortePlegado.jsx';
-import { generatePdfTapajuntasByPartida } from './pdfs/PdfTapajuntas.jsx';
+import { generatePdfDisenoLaserByFechaProduccion } from './pdfs/PdfDisenoLaser.jsx';
+import { generatePdfCortePlegadoByPartida, generatePdfCortePlegadoByFechaProduccion } from './pdfs/PdfCortePlegado.jsx';
+import { generatePdfTapajuntasByPartida, generatePdfTapajuntasByFechaProduccion } from './pdfs/PdfTapajuntas.jsx';
 import { generatePdfArmPrimarioByPartida, generatePdfArmPrimarioByNv } from './pdfs/PdfArmPrimario.jsx';
 
 // ✅ PDF.js
@@ -31,7 +31,6 @@ function isPortraitTablet() {
   const shortSide = Math.min(w, h);
   const longSide = Math.max(w, h);
 
-  // Heurística razonable
   const tabletLike = shortSide >= 600 && longSide <= 1600;
   return portrait && tabletLike;
 }
@@ -57,14 +56,21 @@ function getPdfRequestFromLocation() {
   const partida = toStr(qs.get('partida'));
   const nv = toStr(qs.get('nv'));
 
-  if (!tipo) return { active: false, tipo: '', partida: '', nv: '' };
+  // NUEVO: fecha para diseno-laser
+  const fecha = toStr(qs.get('fecha')) || toStr(qs.get('fecha_envio_produccion'));
+
+  if (!tipo) return { active: false, tipo: '', partida: '', nv: '', fecha: '' };
 
   if (tipo === 'arm-primario') {
     const active = !!nv || !!partida;
-    return { active, tipo, partida, nv };
+    return { active, tipo, partida, nv, fecha };
   }
 
-  return { active: !!partida, tipo, partida, nv };
+  if (tipo === 'diseno-laser' || tipo === 'corte-plegado' || tipo === 'tapajuntas') {
+    return { active: !!fecha, tipo, partida, nv, fecha };
+  }
+
+  return { active: !!partida, tipo, partida, nv, fecha };
 }
 
 export default function PdfLinkView() {
@@ -80,16 +86,16 @@ export default function PdfLinkView() {
   const spec = useMemo(() => {
     const map = {
       'diseno-laser': {
-        gen: ({ partida }) => generatePdfDisenoLaserByPartida(partida),
-        needs: 'partida',
+        gen: ({ fecha }) => generatePdfDisenoLaserByFechaProduccion(fecha),
+        needs: 'fecha',
       },
       'corte-plegado': {
-        gen: ({ partida }) => generatePdfCortePlegadoByPartida(partida),
-        needs: 'partida',
+        gen: ({ fecha }) => generatePdfCortePlegadoByFechaProduccion(fecha),
+        needs: 'fecha',
       },
       tapajuntas: {
-        gen: ({ partida }) => generatePdfTapajuntasByPartida(partida),
-        needs: 'partida',
+        gen: ({ fecha }) => generatePdfTapajuntasByFechaProduccion(fecha),
+        needs: 'fecha',
       },
       'arm-primario': {
         gen: ({ nv, partida }) => {
@@ -116,7 +122,6 @@ export default function PdfLinkView() {
     const myRenderId = ++lastRenderIdRef.current;
     setRendering(true);
 
-    // ========= Ajustes de calidad =========
     const QUALITY_BOOST_PORTRAIT_TABLET = 2.0;
     const QUALITY_BOOST_DEFAULT = 1.4;
     const MAX_SCALE_TO_FIT = 4.0;
@@ -175,7 +180,6 @@ export default function PdfLinkView() {
         canvas.style.width = `${Math.floor(cssViewport.width)}px`;
         canvas.style.height = `${Math.floor(cssViewport.height)}px`;
 
-        // Full-bleed: sin bordes ni márgenes ni “tarjeta”
         canvas.style.display = 'block';
         canvas.style.margin = '0 auto';
         canvas.style.background = '#fff';
@@ -208,11 +212,17 @@ export default function PdfLinkView() {
         if (spec.needs === 'partida' && !req.partida) {
           throw new Error('Falta parámetro "partida".');
         }
+        if (spec.needs === 'fecha' && !req.fecha) {
+          throw new Error('Falta parámetro "fecha" (o "fecha_envio_produccion").');
+        }
+        if (spec.needs === 'fecha' && !req.fecha) {
+          throw new Error('Falta parámetro "fecha".');
+        }
         if (spec.needs === 'nv_or_partida' && !req.nv && !req.partida) {
           throw new Error('Falta parámetro "nv" o "partida".');
         }
 
-        const blob = await spec.gen({ partida: req.partida, nv: req.nv });
+        const blob = await spec.gen({ partida: req.partida, nv: req.nv, fecha: req.fecha });
         if (!alive) return;
 
         const buf = await blob.arrayBuffer();
@@ -237,9 +247,8 @@ export default function PdfLinkView() {
       clearContainer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [req.active, req.partida, req.nv, req.tipo, spec]);
+  }, [req.active, req.partida, req.nv, req.fecha, req.tipo, spec]);
 
-  // ✅ UI mínima: solo PDF. Si hay error, lo mostramos (sino, pantalla limpia).
   if (error) {
     return (
       <div style={{ padding: 16, color: 'crimson' }}>
