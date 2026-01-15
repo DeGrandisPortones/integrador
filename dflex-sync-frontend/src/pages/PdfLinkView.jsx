@@ -236,7 +236,7 @@ export default function PdfLinkView() {
       clearContainer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [req.active, req.req.nv, req.fecha, req.tipo, spec]);
+  }, [req.active, req.nv, req.fecha, req.tipo, spec]);
 
   if (error) {
     return (
