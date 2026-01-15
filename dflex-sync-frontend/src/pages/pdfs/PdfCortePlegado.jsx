@@ -33,7 +33,6 @@ function todayDDMMYY() {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy}`;
 }
 
-
 function normalizeYYYYMMDD(v) {
   const s = toStr(v);
   if (!s) return '';
@@ -47,9 +46,7 @@ function normalizeYYYYMMDD(v) {
   return '';
 }
 
-
 function getInicioProdImput(row) {
-  // Robusto a distintas capitalizaciones/alias, pero prioriza el nombre real: inicio_prod_imput
   return normalizeYYYYMMDD(
     row?.inicio_prod_imput ??
       row?.Inicio_prod_imput ??
@@ -172,32 +169,24 @@ function getValoresEndpoint(accessToken) {
   return accessToken ? '/api/pre-produccion-valores' : '/api/public/pre-produccion-valores';
 }
 
+// ✅ FIX: este fetch por partida NO debe filtrar por fecha (en tu versión usaba f/base sin existir)
 async function fetchValoresByPartida(partida, accessToken) {
   const p = toStr(partida);
   if (!p) return [];
 
-  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?partida=${encodeURIComponent(p)}`;
+  const baseUrl = `${API_BASE_URL}${getValoresEndpoint(accessToken)}`;
+  const url = `${baseUrl}?partida=${encodeURIComponent(p)}`;
   const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
   const res = await fetch(url, headers ? { headers } : undefined);
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} en ${base}${txt ? `: ${txt}` : ''}`);
+    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
   }
 
   const data = await res.json();
-  const rows = Array.isArray(data?.rows) ? data.rows : [];
-
-  // Aseguramos el agrupamiento por inicio_prod_imput del lado del front,
-  // por si el backend no está filtrando correctamente.
-  const filtered = rows.filter((r) => getInicioProdImput(r) === f);
-
-  // Si el backend devuelve filas pero no trae el campo inicio_prod_imput, no podemos filtrar acá.
-  const anyHasInicio = rows.some((r) => !!getInicioProdImput(r));
-  if (!anyHasInicio) return rows;
-
-  return filtered;
+  return Array.isArray(data?.rows) ? data.rows : [];
 }
 
 async function fetchValoresByFechaProduccion(fechaProduccion, accessToken) {
@@ -207,15 +196,14 @@ async function fetchValoresByFechaProduccion(fechaProduccion, accessToken) {
   const base = `${API_BASE_URL}${getValoresEndpoint(accessToken)}`;
   const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
-  // Preferimos el nuevo criterio: inicio_prod_imput (YYYY-MM-DD). Si el backend aún no lo soporta,
-  // intentamos compatibilidad hacia atrás con inicio_prod_imput.
   const urlNew = `${base}?inicio_prod_imput=${encodeURIComponent(f)}`;
   let res = await fetch(urlNew, headers ? { headers } : undefined);
   if (!res.ok && (res.status === 400 || res.status === 404)) {
     const urlOld = `${base}?fecha_envio_produccion=${encodeURIComponent(f)}`;
     res = await fetch(urlOld, headers ? { headers } : undefined);
   }
-if (!res.ok) {
+
+  if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} en ${base}${txt ? `: ${txt}` : ''}`);
   }
@@ -223,15 +211,49 @@ if (!res.ok) {
   const data = await res.json();
   const rows = Array.isArray(data?.rows) ? data.rows : [];
 
-  // Aseguramos el agrupamiento por inicio_prod_imput del lado del front,
-  // por si el backend no está filtrando correctamente.
   const filtered = rows.filter((r) => getInicioProdImput(r) === f);
 
-  // Si el backend devuelve filas pero no trae el campo inicio_prod_imput, no podemos filtrar acá.
   const anyHasInicio = rows.some((r) => !!getInicioProdImput(r));
   if (!anyHasInicio) return rows;
 
   return filtered;
+}
+
+// =====================
+// ✅ NUEVO: helpers para rango
+// =====================
+function buildDateRangeInclusive(fromYYYYMMDD, toYYYYMMDD) {
+  const from = normalizeYYYYMMDD(fromYYYYMMDD);
+  const to = normalizeYYYYMMDD(toYYYYMMDD);
+  if (!from || !to) return [];
+
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+  if (start.getTime() > end.getTime()) return [];
+
+  const out = [];
+  const cur = new Date(start);
+  let guard = 0;
+
+  while (cur.getTime() <= end.getTime()) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    guard += 1;
+    if (guard > 370) break; // safety
+  }
+
+  return out;
+}
+
+function uniqByNV(rows) {
+  const m = new Map();
+  for (const r of rows || []) {
+    const k = toStr(r?.NV ?? r?.nv);
+    if (!k) continue;
+    if (!m.has(k)) m.set(k, r);
+  }
+  return Array.from(m.values());
 }
 
 // =====================
@@ -274,6 +296,7 @@ export async function generatePdfCortePlegado(partida, rows, accessToken) {
       size: POS.header.size,
       maxWidth: 160,
     });
+
     drawFittedText(page, font, todayDDMMYY(), POS.header.fechaX, POS.header.fechaY, {
       size: POS.header.size,
       maxWidth: 110,
@@ -311,7 +334,6 @@ export async function generatePdfCortePlegado(partida, rows, accessToken) {
   return new Blob([bytes], { type: 'application/pdf' });
 }
 
-
 export async function generatePdfCortePlegadoByFechaProduccion(fechaProduccion, accessToken) {
   const f = normalizeYYYYMMDD(fechaProduccion);
   if (!f) throw new Error('Falta parámetro "fecha" (YYYY-MM-DD)');
@@ -323,7 +345,30 @@ export async function generatePdfCortePlegadoByFechaProduccion(fechaProduccion, 
   return generatePdfCortePlegado(headerKey, rows, accessToken);
 }
 
+// ✅ NUEVO: rango (un solo listado continuo)
+export async function generatePdfCortePlegadoByRangoProduccion(desde, hasta, accessToken) {
+  const d = normalizeYYYYMMDD(desde);
+  const h = normalizeYYYYMMDD(hasta);
+  if (!d || !h) throw new Error('Faltan fechas (YYYY-MM-DD) para el rango.');
+
+  const days = buildDateRangeInclusive(d, h);
+  if (!days.length) throw new Error('Rango inválido (desde > hasta o formato incorrecto).');
+
+  let all = [];
+  for (const day of days) {
+    const rows = await fetchValoresByFechaProduccion(day, accessToken);
+    if (rows?.length) all = all.concat(rows);
+  }
+
+  all = uniqByNV(all);
+  if (!all.length) throw new Error(`No hay filas para inicio_prod_imput entre ${d} y ${h}`);
+
+  const headerKey = `${yyyymmddToDDMMYY(d)} a ${yyyymmddToDDMMYY(h)}`;
+  return generatePdfCortePlegado(headerKey, all, accessToken);
+}
+
 export default {
   generatePdfCortePlegado,
   generatePdfCortePlegadoByFechaProduccion,
+  generatePdfCortePlegadoByRangoProduccion,
 };

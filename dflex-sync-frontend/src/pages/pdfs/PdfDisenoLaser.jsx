@@ -460,8 +460,66 @@ export async function generatePdfDisenoLaserByFechaProduccion(fechaProduccion, a
   if (!rows.length) throw new Error(`No hay filas para inicio_prod_imput=${f}`);
 
   return buildPdfDisenoLaser({ headerKey: f, rows });
+
 }
 
+// ✅ NUEVO: rango (una misma lista, sin separar por fecha)
+function buildDateRangeInclusive(fromYYYYMMDD, toYYYYMMDD) {
+  const from = normalizeYYYYMMDD(fromYYYYMMDD);
+  const to = normalizeYYYYMMDD(toYYYYMMDD);
+  if (!from || !to) return [];
+
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+  if (start.getTime() > end.getTime()) return [];
+
+  const out = [];
+  const cur = new Date(start);
+  let guard = 0;
+  while (cur.getTime() <= end.getTime()) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    guard += 1;
+    if (guard > 370) break;
+  }
+  return out;
+}
+
+function uniqByNV(rows) {
+  const m = new Map();
+  for (const r of rows || []) {
+    const k = toStr(r?.NV ?? r?.nv);
+    if (!k) continue;
+    if (!m.has(k)) m.set(k, r);
+  }
+  return Array.from(m.values());
+}
+
+export async function generatePdfDisenoLaserByRangoProduccion(desde, hasta, accessToken) {
+  const d = normalizeYYYYMMDD(desde);
+  const h = normalizeYYYYMMDD(hasta);
+  if (!d || !h) throw new Error('Faltan fechas (YYYY-MM-DD) para el rango.');
+
+  const days = buildDateRangeInclusive(d, h);
+  if (!days.length) throw new Error('Rango inválido (desde > hasta o formato incorrecto).');
+
+  let all = [];
+  for (const day of days) {
+    const rows = await fetchValoresByFechaProduccion(day, accessToken);
+    if (rows?.length) all = all.concat(rows);
+  }
+
+  all = uniqByNV(all);
+  if (!all.length) throw new Error(`No hay filas para inicio_prod_imput entre ${d} y ${h}`);
+
+  const headerKey = `${yyyymmddToDDMMYY(d)} a ${yyyymmddToDDMMYY(h)}`;
+  return buildPdfDisenoLaser({ headerKey, rows: all });
+}
+
+// ✅ actualizar export default si querés mantenerlo completo:
 export default {
   generatePdfDisenoLaserByFechaProduccion,
+  generatePdfDisenoLaserByRangoProduccion,
 };
+

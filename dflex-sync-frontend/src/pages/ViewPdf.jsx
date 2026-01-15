@@ -5,10 +5,15 @@ import { useAuth } from '../auth/AuthProvider.jsx';
 // Arm Primario
 import { generatePdfArmPrimarioByNv } from './pdfs/PdfArmPrimario.jsx';
 
-// Imports estáticos
+// Diseño / CortePlegado / Tapajuntas (día)
 import { generatePdfDisenoLaserByFechaProduccion } from './pdfs/PdfDisenoLaser.jsx';
 import { generatePdfCortePlegadoByFechaProduccion } from './pdfs/PdfCortePlegado.jsx';
 import { generatePdfTapajuntasByFechaProduccion } from './pdfs/PdfTapajuntas.jsx';
+
+// ✅ NUEVO: rango
+import { generatePdfDisenoLaserByRangoProduccion } from './pdfs/PdfDisenoLaser.jsx';
+import { generatePdfCortePlegadoByRangoProduccion } from './pdfs/PdfCortePlegado.jsx';
+import { generatePdfTapajuntasByRangoProduccion } from './pdfs/PdfTapajuntas.jsx';
 
 function toStr(v) {
   if (v === null || v === undefined) return '';
@@ -30,12 +35,29 @@ function normalizeYYYYMMDD(v) {
 
 export default function ViewPdf() {
   const [nv, setNv] = useState('');
-  const [fechaProd, setFechaProd] = useState(''); // ✅ nuevo: fecha de producción
+
+  // día único
+  const [fechaProd, setFechaProd] = useState('');
+
+  // ✅ rango
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
 
   const [loadingKey, setLoadingKey] = useState('');
   const [error, setError] = useState('');
+
   const canNv = useMemo(() => toStr(nv).length > 0, [nv]);
-  const canFechaProd = useMemo(() => normalizeYYYYMMDD(fechaProd).length > 0, [fechaProd]);
+
+  const fDia = useMemo(() => normalizeYYYYMMDD(fechaProd), [fechaProd]);
+  const canFechaProd = useMemo(() => fDia.length > 0, [fDia]);
+
+  const fDesde = useMemo(() => normalizeYYYYMMDD(fechaDesde), [fechaDesde]);
+  const fHasta = useMemo(() => normalizeYYYYMMDD(fechaHasta), [fechaHasta]);
+
+  const canRango = useMemo(() => {
+    if (!fDesde || !fHasta) return false;
+    return new Date(`${fDesde}T00:00:00Z`).getTime() <= new Date(`${fHasta}T00:00:00Z`).getTime();
+  }, [fDesde, fHasta]);
 
   const { session } = useAuth();
   const accessToken = session?.access_token || null;
@@ -56,7 +78,6 @@ export default function ViewPdf() {
     setError('');
     try {
       if (!accessToken) throw new Error('No hay sesión activa (token vacío).');
-
       const blob = await fnWithToken(accessToken);
       await downloadBlob(blob, filename);
     } catch (e) {
@@ -82,12 +103,7 @@ export default function ViewPdf() {
       <div className="field-row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
         <label>
           NV (portón):&nbsp;
-          <input
-            type="text"
-            value={nv}
-            onChange={(e) => setNv(e.target.value)}
-            placeholder="Ej: 4003"
-          />
+          <input type="text" value={nv} onChange={(e) => setNv(e.target.value)} placeholder="Ej: 4003" />
         </label>
 
         <label>
@@ -101,22 +117,43 @@ export default function ViewPdf() {
         </label>
       </div>
 
+      {/* ✅ rango */}
+      <div className="field-row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
+        <label>
+          DESDE (inicio_prod_imput):&nbsp;
+          <input
+            type="text"
+            value={fechaDesde}
+            onChange={(e) => setFechaDesde(e.target.value)}
+            placeholder="Ej: 2026-01-14"
+          />
+        </label>
+
+        <label>
+          HASTA (inicio_prod_imput):&nbsp;
+          <input
+            type="text"
+            value={fechaHasta}
+            onChange={(e) => setFechaHasta(e.target.value)}
+            placeholder="Ej: 2026-01-15"
+          />
+        </label>
+      </div>
+
       <div style={{ marginTop: 12 }}>
-        <h3 style={{ margin: '12px 0 6px' }}>Diseño Laser (por FECHA (inicio_prod_imput))</h3>
+        <h3 style={{ margin: '12px 0 6px' }}>Diseño / Corte-Plegado / Tapajuntas</h3>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* POR DÍA */}
           <button
             type="button"
             className="btn-secondary"
             disabled={!canFechaProd || anyLoading || !accessToken}
             onClick={() => {
-              const f = normalizeYYYYMMDD(fechaProd);
-              run(`Fecha_${f}_DisenoLaser.pdf`, async (token) => {
-                return generatePdfDisenoLaserByFechaProduccion(f, token);
-              });
+              run(`Fecha_${fDia}_DisenoLaser.pdf`, async (token) => generatePdfDisenoLaserByFechaProduccion(fDia, token));
             }}
           >
-            {anyLoading ? '...' : 'PDF Diseño Laser'}
+            {anyLoading ? '...' : 'PDF Diseño Laser (día)'}
           </button>
 
           <button
@@ -124,13 +161,12 @@ export default function ViewPdf() {
             className="btn-secondary"
             disabled={!canFechaProd || anyLoading || !accessToken}
             onClick={() => {
-              const f = normalizeYYYYMMDD(fechaProd);
-              run(`Fecha_${f}_CortePlegado.pdf`, async (token) => {
-                return generatePdfCortePlegadoByFechaProduccion(f, token);
-              });
+              run(`Fecha_${fDia}_CortePlegado.pdf`, async (token) =>
+                generatePdfCortePlegadoByFechaProduccion(fDia, token)
+              );
             }}
           >
-            {anyLoading ? '...' : 'PDF Corte y Plegado'}
+            {anyLoading ? '...' : 'PDF Corte y Plegado (día)'}
           </button>
 
           <button
@@ -138,13 +174,52 @@ export default function ViewPdf() {
             className="btn-secondary"
             disabled={!canFechaProd || anyLoading || !accessToken}
             onClick={() => {
-              const f = normalizeYYYYMMDD(fechaProd);
-              run(`Fecha_${f}_Tapajuntas.pdf`, async (token) => {
-                return generatePdfTapajuntasByFechaProduccion(f, token);
-              });
+              run(`Fecha_${fDia}_Tapajuntas.pdf`, async (token) => generatePdfTapajuntasByFechaProduccion(fDia, token));
             }}
           >
-            {anyLoading ? '...' : 'PDF Tapajuntas'}
+            {anyLoading ? '...' : 'PDF Tapajuntas (día)'}
+          </button>
+        </div>
+
+        {/* ✅ POR RANGO (UNA MISMA LISTA, SIN SEPARAR POR FECHA) */}
+        <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canRango || anyLoading || !accessToken}
+            onClick={() => {
+              run(`Rango_${fDesde}_a_${fHasta}_DisenoLaser.pdf`, async (token) =>
+                generatePdfDisenoLaserByRangoProduccion(fDesde, fHasta, token)
+              );
+            }}
+          >
+            {anyLoading ? '...' : 'PDF Diseño Laser (rango)'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canRango || anyLoading || !accessToken}
+            onClick={() => {
+              run(`Rango_${fDesde}_a_${fHasta}_CortePlegado.pdf`, async (token) =>
+                generatePdfCortePlegadoByRangoProduccion(fDesde, fHasta, token)
+              );
+            }}
+          >
+            {anyLoading ? '...' : 'PDF Corte y Plegado (rango)'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!canRango || anyLoading || !accessToken}
+            onClick={() => {
+              run(`Rango_${fDesde}_a_${fHasta}_Tapajuntas.pdf`, async (token) =>
+                generatePdfTapajuntasByRangoProduccion(fDesde, fHasta, token)
+              );
+            }}
+          >
+            {anyLoading ? '...' : 'PDF Tapajuntas (rango)'}
           </button>
         </div>
       </div>
@@ -158,9 +233,7 @@ export default function ViewPdf() {
             className="btn-secondary"
             disabled={!canNv || anyLoading || !accessToken}
             onClick={() =>
-              run(`NV_${toStr(nv)}_ArmadoPrimario.pdf`, async (token) => {
-                return generatePdfArmPrimarioByNv(toStr(nv), token);
-              })
+              run(`NV_${toStr(nv)}_ArmadoPrimario.pdf`, async (token) => generatePdfArmPrimarioByNv(toStr(nv), token))
             }
           >
             {anyLoading ? '...' : 'PDF Armado Primario'}
