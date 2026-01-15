@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 // ✅ generadores
 import { generatePdfDisenoLaserByFechaProduccion } from './pdfs/PdfDisenoLaser.jsx';
-import { generatePdfCortePlegadoByPartida, generatePdfCortePlegadoByFechaProduccion } from './pdfs/PdfCortePlegado.jsx';
-import { generatePdfTapajuntasByPartida, generatePdfTapajuntasByFechaProduccion } from './pdfs/PdfTapajuntas.jsx';
-import { generatePdfArmPrimarioByPartida, generatePdfArmPrimarioByNv } from './pdfs/PdfArmPrimario.jsx';
+import { generatePdfCortePlegadoByFechaProduccion } from './pdfs/PdfCortePlegado.jsx';
+import { generatePdfTapajuntasByFechaProduccion } from './pdfs/PdfTapajuntas.jsx';
+import { generatePdfArmPrimarioByNv } from './pdfs/PdfArmPrimario.jsx';
 
 // ✅ PDF.js
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
@@ -53,24 +53,23 @@ function getPdfRequestFromLocation() {
   const qs = new URLSearchParams(search);
 
   const tipo = getPdfTipoFromLocation();
-  const partida = toStr(qs.get('partida'));
   const nv = toStr(qs.get('nv'));
 
   // NUEVO: fecha para diseno-laser
-  const fecha = toStr(qs.get('inicio_prod_imput')) || toStr(qs.get('fecha_envio_produccion'));
+  const fecha = toStr(qs.get('inicio_prod_imput')) || toStr(qs.get('fecha')) || toStr(qs.get('fecha_envio_produccion'));
 
-  if (!tipo) return { active: false, tipo: '', partida: '', nv: '', fecha: '' };
+  if (!tipo) return { active: false, tipo: '', nv: '', fecha: '' };
 
   if (tipo === 'arm-primario') {
-    const active = !!nv || !!partida;
-    return { active, tipo, partida, nv, fecha };
+    const active = !!nv;
+    return { active, tipo, nv, fecha };
   }
 
   if (tipo === 'diseno-laser' || tipo === 'corte-plegado' || tipo === 'tapajuntas') {
-    return { active: !!fecha, tipo, partida, nv, fecha };
+    return { active: !!fecha, tipo, nv, fecha };
   }
 
-  return { active: !!partida, tipo, partida, nv, fecha };
+  return { active: false, tipo, nv, fecha };
 }
 
 export default function PdfLinkView() {
@@ -98,11 +97,8 @@ export default function PdfLinkView() {
         needs: 'fecha',
       },
       'arm-primario': {
-        gen: ({ nv, partida }) => {
-          if (nv) return generatePdfArmPrimarioByNv(nv);
-          return generatePdfArmPrimarioByPartida(partida);
-        },
-        needs: 'nv_or_partida',
+        gen: ({ nv }) => generatePdfArmPrimarioByNv(nv),
+        needs: 'nv',
       },
     };
 
@@ -208,21 +204,14 @@ export default function PdfLinkView() {
         if (!spec) {
           throw new Error('Tipo de PDF no soportado.');
         }
-
-        if (spec.needs === 'partida' && !req.partida) {
-          throw new Error('Falta parámetro "partida".');
-        }
         if (spec.needs === 'fecha' && !req.fecha) {
-          throw new Error('Falta parámetro "fecha" (o "fecha_envio_produccion").');
+          throw new Error('Falta parámetro "fecha" (inicio_prod_imput, YYYY-MM-DD).');
         }
-        if (spec.needs === 'fecha' && !req.fecha) {
-          throw new Error('Falta parámetro "fecha".');
-        }
-        if (spec.needs === 'nv_or_partida' && !req.nv && !req.partida) {
-          throw new Error('Falta parámetro "nv" o "partida".');
+        if (spec.needs === 'nv' && !req.nv) {
+          throw new Error('Falta parámetro "nv".');
         }
 
-        const blob = await spec.gen({ partida: req.partida, nv: req.nv, fecha: req.fecha });
+        const blob = await spec.gen({ nv: req.nv, fecha: req.fecha });
         if (!alive) return;
 
         const buf = await blob.arrayBuffer();
@@ -247,7 +236,7 @@ export default function PdfLinkView() {
       clearContainer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [req.active, req.partida, req.nv, req.fecha, req.tipo, spec]);
+  }, [req.active, req.req.nv, req.fecha, req.tipo, spec]);
 
   if (error) {
     return (

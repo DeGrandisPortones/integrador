@@ -49,6 +49,20 @@ function normalizeYYYYMMDD(v) {
   return '';
 }
 
+
+function getInicioProdImput(row) {
+  // Robusto a distintas capitalizaciones/alias, pero prioriza el nombre real: inicio_prod_imput
+  return normalizeYYYYMMDD(
+    row?.inicio_prod_imput ??
+      row?.Inicio_prod_imput ??
+      row?.INICIO_PROD_IMPUT ??
+      row?.inicioProdImput ??
+      row?.Inicio_Prod_Imput ??
+      row?.inicio_prod ??
+      row?.INICIO_PROD
+  );
+}
+
 function yyyymmddToDDMMYY(yyyymmdd) {
   const s = normalizeYYYYMMDD(yyyymmdd);
   if (!s) return '';
@@ -179,29 +193,55 @@ async function fetchValoresByPartida(partida, accessToken) {
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
+    throw new Error(`HTTP ${res.status} en ${base}${txt ? `: ${txt}` : ''}`);
   }
 
   const data = await res.json();
-  return Array.isArray(data?.rows) ? data.rows : [];
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+
+  // Aseguramos el agrupamiento por inicio_prod_imput del lado del front,
+  // por si el backend no está filtrando correctamente.
+  const filtered = rows.filter((r) => getInicioProdImput(r) === f);
+
+  // Si el backend devuelve filas pero no trae el campo inicio_prod_imput, no podemos filtrar acá.
+  const anyHasInicio = rows.some((r) => !!getInicioProdImput(r));
+  if (!anyHasInicio) return rows;
+
+  return filtered;
 }
 
 async function fetchValoresByFechaProduccion(fechaProduccion, accessToken) {
   const f = normalizeYYYYMMDD(fechaProduccion);
   if (!f) return [];
 
-  const url = `${API_BASE_URL}${getValoresEndpoint(accessToken)}?fecha_envio_produccion=${encodeURIComponent(f)}`;
+  const base = `${API_BASE_URL}${getValoresEndpoint(accessToken)}`;
   const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
-  const res = await fetch(url, headers ? { headers } : undefined);
-
-  if (!res.ok) {
+  // Preferimos el nuevo criterio: inicio_prod_imput (YYYY-MM-DD). Si el backend aún no lo soporta,
+  // intentamos compatibilidad hacia atrás con inicio_prod_imput.
+  const urlNew = `${base}?inicio_prod_imput=${encodeURIComponent(f)}`;
+  let res = await fetch(urlNew, headers ? { headers } : undefined);
+  if (!res.ok && (res.status === 400 || res.status === 404)) {
+    const urlOld = `${base}?fecha_envio_produccion=${encodeURIComponent(f)}`;
+    res = await fetch(urlOld, headers ? { headers } : undefined);
+  }
+if (!res.ok) {
     const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status} en ${url}${txt ? `: ${txt}` : ''}`);
+    throw new Error(`HTTP ${res.status} en ${base}${txt ? `: ${txt}` : ''}`);
   }
 
   const data = await res.json();
-  return Array.isArray(data?.rows) ? data.rows : [];
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+
+  // Aseguramos el agrupamiento por inicio_prod_imput del lado del front,
+  // por si el backend no está filtrando correctamente.
+  const filtered = rows.filter((r) => getInicioProdImput(r) === f);
+
+  // Si el backend devuelve filas pero no trae el campo inicio_prod_imput, no podemos filtrar acá.
+  const anyHasInicio = rows.some((r) => !!getInicioProdImput(r));
+  if (!anyHasInicio) return rows;
+
+  return filtered;
 }
 
 // =====================
@@ -296,16 +336,13 @@ export async function generatePdfTapajuntas(partida, rows, accessToken) {
 }
 
 // wrapper para ViewPdf / PdfLinkView
-export async function generatePdfTapajuntasByPartida(partida, accessToken) {
-  return generatePdfTapajuntas(partida, null, accessToken);
-}
 
 export async function generatePdfTapajuntasByFechaProduccion(fechaProduccion, accessToken) {
   const f = normalizeYYYYMMDD(fechaProduccion);
   if (!f) throw new Error('Falta parámetro "fecha" (YYYY-MM-DD)');
 
   const rows = await fetchValoresByFechaProduccion(f, accessToken);
-  if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para fecha_envio_produccion=${f}`);
+  if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para inicio_prod_imput=${f}`);
 
   const headerKey = yyyymmddToDDMMYY(f) || f;
   return generatePdfTapajuntas(headerKey, rows, accessToken);
@@ -313,6 +350,5 @@ export async function generatePdfTapajuntasByFechaProduccion(fechaProduccion, ac
 
 export default {
   generatePdfTapajuntas,
-  generatePdfTapajuntasByPartida,
   generatePdfTapajuntasByFechaProduccion,
 };

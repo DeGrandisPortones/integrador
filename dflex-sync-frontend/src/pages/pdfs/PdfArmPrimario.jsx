@@ -600,13 +600,6 @@ export async function generatePdfArmadoPrimario(partida, rows) {
 // =====================
 // Wrappers que usa ViewPdf / PdfLinkView
 // =====================
-export async function generatePdfArmPrimarioByPartida(partida, accessToken) {
-  const p = toStr(partida);
-  if (!p) throw new Error('Partida vacía');
-  const rows = await fetchValores({ partida: p }, accessToken);
-  if (!rows.length) throw new Error(`No hay filas en pre-produccion-valores para PARTIDA=${p}`);
-  return generatePdfArmadoPrimario(p, rows);
-}
 
 export async function generatePdfArmPrimarioByNv(nv, accessToken) {
   const n = toStr(nv);
@@ -619,6 +612,5 @@ export async function generatePdfArmPrimarioByNv(nv, accessToken) {
 
 export default {
   generatePdfArmadoPrimario,
-  generatePdfArmPrimarioByPartida,
   generatePdfArmPrimarioByNv,
 };

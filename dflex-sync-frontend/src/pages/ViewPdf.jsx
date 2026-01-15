@@ -3,14 +3,12 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider.jsx';
 
 // Arm Primario
-import { generatePdfArmPrimarioByNv, generatePdfArmPrimarioByPartida } from './pdfs/PdfArmPrimario.jsx';
+import { generatePdfArmPrimarioByNv } from './pdfs/PdfArmPrimario.jsx';
 
 // Imports estáticos
 import { generatePdfDisenoLaserByFechaProduccion } from './pdfs/PdfDisenoLaser.jsx';
 import { generatePdfCortePlegadoByFechaProduccion } from './pdfs/PdfCortePlegado.jsx';
 import { generatePdfTapajuntasByFechaProduccion } from './pdfs/PdfTapajuntas.jsx';
-import { generatePdfCortePlegadoByPartida } from './pdfs/PdfCortePlegado.jsx';
-import { generatePdfTapajuntasByPartida } from './pdfs/PdfTapajuntas.jsx';
 
 function toStr(v) {
   if (v === null || v === undefined) return '';
@@ -31,14 +29,11 @@ function normalizeYYYYMMDD(v) {
 }
 
 export default function ViewPdf() {
-  const [partida, setPartida] = useState('');
   const [nv, setNv] = useState('');
   const [fechaProd, setFechaProd] = useState(''); // ✅ nuevo: fecha de producción
 
   const [loadingKey, setLoadingKey] = useState('');
   const [error, setError] = useState('');
-
-  const canPartida = useMemo(() => toStr(partida).length > 0, [partida]);
   const canNv = useMemo(() => toStr(nv).length > 0, [nv]);
   const canFechaProd = useMemo(() => normalizeYYYYMMDD(fechaProd).length > 0, [fechaProd]);
 
@@ -86,16 +81,6 @@ export default function ViewPdf() {
 
       <div className="field-row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
         <label>
-          PARTIDA:&nbsp;
-          <input
-            type="text"
-            value={partida}
-            onChange={(e) => setPartida(e.target.value)}
-            placeholder="Ej: 507"
-          />
-        </label>
-
-        <label>
           NV (portón):&nbsp;
           <input
             type="text"
@@ -106,7 +91,7 @@ export default function ViewPdf() {
         </label>
 
         <label>
-          FECHA PROD (YYYY-MM-DD):&nbsp;
+          FECHA (inicio_prod_imput, YYYY-MM-DD):&nbsp;
           <input
             type="text"
             value={fechaProd}
@@ -117,7 +102,7 @@ export default function ViewPdf() {
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <h3 style={{ margin: '12px 0 6px' }}>Diseño Laser (por FECHA de producción)</h3>
+        <h3 style={{ margin: '12px 0 6px' }}>Diseño Laser (por FECHA (inicio_prod_imput))</h3>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
@@ -160,51 +145,6 @@ export default function ViewPdf() {
             }}
           >
             {anyLoading ? '...' : 'PDF Tapajuntas'}
-          </button>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <h3 style={{ margin: '12px 0 6px' }}>Por PARTIDA</h3>
-
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={!canPartida || anyLoading || !accessToken}
-            onClick={() =>
-              run(`Partida_${toStr(partida)}_CortePlegado.pdf`, async (token) => {
-                return generatePdfCortePlegadoByPartida(toStr(partida), token);
-              })
-            }
-          >
-            {anyLoading ? '...' : 'PDF Corte y Plegado'}
-          </button>
-
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={!canPartida || anyLoading || !accessToken}
-            onClick={() =>
-              run(`Partida_${toStr(partida)}_Tapajuntas.pdf`, async (token) => {
-                return generatePdfTapajuntasByPartida(toStr(partida), token);
-              })
-            }
-          >
-            {anyLoading ? '...' : 'PDF Tapajuntas'}
-          </button>
-
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={!canPartida || anyLoading || !accessToken}
-            onClick={() =>
-              run(`Partida_${toStr(partida)}_ArmadoPrimario.pdf`, async (token) => {
-                return generatePdfArmPrimarioByPartida(toStr(partida), token);
-              })
-            }
-          >
-            {anyLoading ? '...' : 'PDF Armado Primario (1 hoja por portón)'}
           </button>
         </div>
       </div>

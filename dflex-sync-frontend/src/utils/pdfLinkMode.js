@@ -26,17 +26,17 @@ export function isPdfLinkMode() {
   const hasTipoByQuery = (qs.get('pdf') || '').trim().length > 0;
   const hasTipoByPath = /^\/pdfs\/[^/]+\/?$/i.test(pathname);
 
-  const hasPartida = (qs.get('partida') || '').trim().length > 0;
   const hasNv = (qs.get('nv') || '').trim().length > 0;
 
   // NUEVO: fecha para diseno-laser
   const hasFecha =
+    (qs.get('inicio_prod_imput') || '').trim().length > 0 ||
     (qs.get('fecha') || '').trim().length > 0 ||
     (qs.get('fecha_envio_produccion') || '').trim().length > 0;
 
-  // Para arm-primario permitimos nv o partida
+  // Para arm-primario permitimos nv
   if (tipo === 'arm-primario') {
-    return (hasTipoByQuery || hasTipoByPath) && (hasNv || hasPartida);
+    return (hasTipoByQuery || hasTipoByPath) && (hasNv);
   }
 
   // Para diseno-laser / corte-plegado / tapajuntas: requiere fecha
@@ -44,6 +44,6 @@ export function isPdfLinkMode() {
     return (hasTipoByQuery || hasTipoByPath) && hasFecha;
   }
 
-  // Para el resto: requiere partida
-  return (hasTipoByQuery || hasTipoByPath) && hasPartida;
+  // Para el resto: requiere fecha
+  return (hasTipoByQuery || hasTipoByPath) && hasFecha;
 }
