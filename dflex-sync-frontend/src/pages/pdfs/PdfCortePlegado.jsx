@@ -23,7 +23,7 @@ function toNum(v) {
 function toMm(v) {
   const n = toNum(v);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  return n < 500 ? n * 10 : n;
+  return n * 10;
 }
 
 function todayDDMMYY() {
