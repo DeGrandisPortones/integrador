@@ -57,7 +57,7 @@ function getPdfRequestFromLocation() {
   const nv = toStr(qs.get('nv'));
 
   // NUEVO: fecha para diseno-laser
-  const fecha = toStr(qs.get('fecha')) || toStr(qs.get('fecha_envio_produccion'));
+  const fecha = toStr(qs.get('inicio_prod_imput')) || toStr(qs.get('fecha_envio_produccion'));
 
   if (!tipo) return { active: false, tipo: '', partida: '', nv: '', fecha: '' };
 
