@@ -1253,7 +1253,7 @@ function toNumber(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-const priceUnit = toNumber(line.precio);   // <-- SIEMPRE INTASVTAS.precio
+const priceUnit = toNumber(line.prelista);   // <-- SIEMPRE INTASVTAS.precio
 const discount = toNumber(line.bonific);
 const qty = toNumber(line.cantidad);
 
