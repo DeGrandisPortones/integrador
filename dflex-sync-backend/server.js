@@ -781,7 +781,11 @@ async function odooExecuteKw(model, method, args = [], kwargs = {}) {
     args: [ODOO_DB, uid, ODOO_PASSWORD, model, method, args, finalKwargs],
   });
 
-  // =====================
+
+  return result;
+}
+
+// =====================
 // CAMPOS CUSTOM EN ODOO
 // =====================
 
@@ -854,41 +858,22 @@ async function getAlreadySentNvSet(nvList) {
   return sent;
 }
 
-function extractRowDateAny(row) {
-  // Intenta extraer una fecha desde columnas comunes de Pre_Produccion / NTASVTAS
-  const keys = [
-    'Fecha',
-    'FECHA',
-    'fecha',
-    'FechaAlta',
-    'FECHAALTA',
-    'fecha_alta',
-    'Fec',
-    'FEC',
-    'fec',
-    'FecAlta',
-    'fecalta',
-    'FechaPedido',
-    'FECHAPEDIDO',
-    'fechaPedido',
-    'fecha_pedido',
-    'FechaNV',
-    'FECHANV',
-    'fechanv',
-  ];
+function extractRowFechaNV(row) {
+  // Fecha de NV (columna confirmada: Fecha_NV). Acepta variantes de casing.
+  const raw =
+    (row && (row.Fecha_NV ?? row.FECHA_NV ?? row.fecha_nv ?? row.FechaNV ?? row.FECHANV ?? row.fechanv)) ?? null;
 
-  for (const k of keys) {
-    if (row && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
-      const d = row[k] instanceof Date ? row[k] : new Date(row[k]);
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-  }
+  if (raw === null || raw === undefined) return null;
 
-  return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  const d = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+
+  return d;
 }
 
-return result;
-}
 
 // =====================
 // UTILIDADES
@@ -1454,10 +1439,10 @@ app.get('/api/portones', requireAuth, attachRole, async (req, res) => {
     const MIN_DATE_STR = '2026-01-01';
     const minDate = new Date(`${MIN_DATE_STR}T00:00:00.000Z`);
 
-    const hasAnyDate = (rows || []).some((r) => !!extractRowDateAny(r));
+    const hasAnyDate = (rows || []).some((r) => !!extractRowFechaNV(r));
     if (hasAnyDate) {
       rows = (rows || []).filter((r) => {
-        const d = extractRowDateAny(r);
+        const d = extractRowFechaNV(r);
         if (!d) return false; // si hay fecha en general, pero esta fila no tiene, la excluimos
         return d.getTime() >= minDate.getTime();
       });
