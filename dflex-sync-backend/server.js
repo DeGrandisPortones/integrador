@@ -259,12 +259,19 @@ async function getNtavHeader(idpedido) {
 async function getNtavLinesFromHeader(header) {
   const pool = await getSqlPool();
 
+  // En instalaciones viejas, el campo `numero` a veces es VARCHAR.
+  // Para hacerlo robusto, comparamos como string (trim) en lugar de forzar INT.
+  const tipo = header?.tipo ?? null;
+  const sucursalInt = header?.sucursal !== undefined && header?.sucursal !== null ? parseInt(header.sucursal, 10) : null;
+  const depositoInt = header?.deposito !== undefined && header?.deposito !== null ? parseInt(header.deposito, 10) : null;
+  const numeroStr = header?.numero !== undefined && header?.numero !== null ? String(header.numero).trim() : '';
+
   const result = await pool
     .request()
-    .input('tipo', sql.VarChar, header.tipo)
-    .input('sucursal', sql.Int, header.sucursal)
-    .input('numero', sql.Int, header.numero)
-    .input('deposito', sql.Int, header.deposito)
+    .input('tipo', sql.VarChar, tipo)
+    .input('sucursal', sql.Int, Number.isFinite(sucursalInt) ? sucursalInt : null)
+    .input('numeroStr', sql.VarChar, numeroStr)
+    .input('deposito', sql.Int, Number.isFinite(depositoInt) ? depositoInt : null)
     .query(`
       SELECT
         l.producto,
@@ -280,7 +287,7 @@ async function getNtavLinesFromHeader(header) {
       WHERE
         l.tipo = @tipo
         AND l.sucursal = @sucursal
-        AND l.numero = @numero
+        AND LTRIM(RTRIM(CAST(l.numero AS varchar(50)))) = @numeroStr
         AND l.deposito = @deposito
     `);
 
@@ -1151,17 +1158,10 @@ app.get('/api/public/pre-produccion-valores', async (req, res) => {
 // ---------------------
 // Sync a Odoo desde SQL (reutilizable)
 // ---------------------
-async function syncOrderFromSql({ idpedido, partner_id, nv }) {
-  if (!idpedido) {
-    const err = new Error('Falta parámetro: idpedido es requerido');
-    err.status = 400;
-    throw err;
-  }
-
-  const header = await getNtavHeader(idpedido);
+async function syncOrderFromHeader({ header, partner_id, nv, idpedido_hint }) {
   if (!header) {
-    const err = new Error(`No se encontró NTASVTAS.idpedido = ${idpedido}`);
-    err.status = 404;
+    const err = new Error('Falta parámetro: header es requerido');
+    err.status = 400;
     throw err;
   }
 
@@ -1182,20 +1182,23 @@ async function syncOrderFromSql({ idpedido, partner_id, nv }) {
   const clientOrderRefParts = [header.tipo || '', header.sucursal || '', header.numero || ''].filter((p) => p !== '');
   const clientOrderRef = clientOrderRefParts.join('-');
 
+  const idpedido = header.idpedido || idpedido_hint || null;
+  const originBase = idpedido ? `NTASVTAS ${idpedido}` : `NTASVTAS ${clientOrderRefParts.join('-')}`;
+
   const orderVals = {
     partner_id: partnerIdFinal,
-    origin: `NTASVTAS ${idpedido}`,
+    origin: originBase,
   };
+
+  // Guardar NV en campo propio para trazabilidad con el sistema viejo
   if (nv !== undefined && nv !== null && String(nv).trim() !== '') {
     await ensureSaleOrderNvField();
     const nvInt = parseInt(String(nv).trim(), 10);
     if (Number.isFinite(nvInt)) {
       orderVals[ODOO_SALE_ORDER_NV_FIELD] = nvInt;
-      // Hace más visible el NV en la cotización sin romper la secuencia de Odoo
-      orderVals.origin = `NV ${nvInt} - NTASVTAS ${idpedido}`;
+      orderVals.origin = `NV ${nvInt} - ${originBase}`;
     }
   }
-
 
   if (ODOO_COMPANY_ID) orderVals.company_id = ODOO_COMPANY_ID;
 
@@ -1213,11 +1216,12 @@ async function syncOrderFromSql({ idpedido, partner_id, nv }) {
     const rawCode = line.producto || '';
     const rawDesc = line.descripcion || '';
 
-    const productoCodigo = rawCode.trim();
-    const descripcion = rawDesc.trim();
+    const productoCodigo = String(rawCode).trim();
+    const descripcion = String(rawDesc).trim();
 
     let productId = null;
 
+    // 1) Intento por default_code (si coincide)
     if (productoCodigo) {
       const idsByCode = await odooExecuteKw('product.product', 'search', [[['default_code', '=', productoCodigo]]], {
         limit: 1,
@@ -1225,6 +1229,12 @@ async function syncOrderFromSql({ idpedido, partner_id, nv }) {
       if (idsByCode.length) productId = idsByCode[0];
     }
 
+    // 2) Por nombre: vos confirmaste que PRODUCTOS.descripcion es exactamente igual a la descripción en Odoo.
+    // Usamos '=' (exacto) y si no, fallback a ilike.
+    if (!productId && descripcion) {
+      const idsExact = await odooExecuteKw('product.product', 'search', [[['name', '=', descripcion]]], { limit: 1 });
+      if (idsExact.length) productId = idsExact[0];
+    }
     if (!productId && descripcion) {
       const idsByName = await odooExecuteKw('product.product', 'search', [[['name', 'ilike', descripcion]]], { limit: 1 });
       if (idsByName.length) productId = idsByName[0];
@@ -1255,9 +1265,14 @@ async function syncOrderFromSql({ idpedido, partner_id, nv }) {
   const orders = await odooExecuteKw('sale.order', 'read', [[orderId], ['amount_total']]);
   const amountTotal = orders[0]?.amount_total || 0;
 
-  const numero = header.numero;
-  if (numero != null) {
-    const portonDomain = [['x_nota_de_venta', '=', numero]];
+  // Vincular con modelo x_dflex.porton si existe (no bloquea si no está)
+  const numeroRaw = header.numero;
+  if (numeroRaw != null) {
+    const numeroStr = String(numeroRaw).trim();
+    const numeroInt = parseInt(numeroStr, 10);
+    const numeroDomainValue = Number.isFinite(numeroInt) ? numeroInt : numeroStr;
+
+    const portonDomain = [['x_nota_de_venta', '=', numeroDomainValue]];
     const portonIds = await odooExecuteKw('x_dflex.porton', 'search', [portonDomain], { limit: 1 });
 
     if (portonIds.length) {
@@ -1270,7 +1285,7 @@ async function syncOrderFromSql({ idpedido, partner_id, nv }) {
       ]);
       console.log(`Portón ${portonIds[0]} vinculado al pedido ${orderId}`);
     } else {
-      console.log(`No se encontró x_dflex.porton con x_nota_de_venta = ${numero} (no se vincula)`);
+      console.log(`No se encontró x_dflex.porton con x_nota_de_venta = ${numeroDomainValue} (no se vincula)`);
     }
   }
 
@@ -1282,6 +1297,23 @@ async function syncOrderFromSql({ idpedido, partner_id, nv }) {
     missing_products: missingProducts,
     header,
   };
+}
+
+async function syncOrderFromSql({ idpedido, partner_id, nv }) {
+  if (!idpedido) {
+    const err = new Error('Falta parámetro: idpedido es requerido');
+    err.status = 400;
+    throw err;
+  }
+
+  const header = await getNtavHeader(idpedido);
+  if (!header) {
+    const err = new Error(`No se encontró NTASVTAS.idpedido = ${idpedido}`);
+    err.status = 404;
+    throw err;
+  }
+
+  return syncOrderFromHeader({ header, partner_id, nv, idpedido_hint: idpedido });
 }
 
 // Busca NTASVTAS por NV (numero) y opcionalmente tipo/sucursal/deposito
@@ -1297,20 +1329,19 @@ async function getNtavHeaderByNv({ nv, tipo, sucursal, deposito }) {
   request.input('nvInt', sql.Int, Number.isFinite(nvInt) ? nvInt : null);
   request.input('nvStr', sql.VarChar, nvStr);
 
-// numero en NTASVTAS puede ser INT o VARCHAR (según instalaciones históricas).
-// Evitamos TRY_CONVERT (no existe en versiones antiguas de SQL Server).
-// Estrategia segura:
-// 1) Comparamos como string (CAST a varchar) contra @nvStr (cubre int/varchar sin errores).
-// 2) Si nvInt es válido, también comparamos por valor numérico para soportar ceros a la izquierda.
-const numeroExpr = "LTRIM(RTRIM(CAST(numero AS varchar(50))))";
+  // numero en NTASVTAS puede ser INT o VARCHAR (según instalaciones históricas).
+  // Evitamos TRY_CONVERT (no existe en versiones antiguas de SQL Server).
+  // Estrategia segura:
+  // 1) Comparamos como string (CAST a varchar) contra @nvStr (cubre int/varchar sin errores).
+  // 2) Si nvInt es válido, también comparamos por valor numérico para soportar ceros a la izquierda.
+  const numeroExpr = "LTRIM(RTRIM(CAST(numero AS varchar(50))))";
 
-const hasNvInt = Number.isFinite(nvInt);
-let where = `(${numeroExpr} = @nvStr`;
-if (hasNvInt) {
-  where += ` OR (${numeroExpr} <> '' AND ${numeroExpr} NOT LIKE '%[^0-9]%' AND CAST(${numeroExpr} AS int) = @nvInt)`;
-}
-where += `)`;
-
+  const hasNvInt = Number.isFinite(nvInt);
+  let where = `(${numeroExpr} = @nvStr`;
+  if (hasNvInt) {
+    where += ` OR (${numeroExpr} <> '' AND ${numeroExpr} NOT LIKE '%[^0-9]%' AND CAST(${numeroExpr} AS int) = @nvInt)`;
+  }
+  where += `)`;
 
   if (tipo) {
     where += ' AND tipo = @tipo';
@@ -1429,9 +1460,6 @@ app.post('/api/sync/order-from-nv', requireAuth, attachRole, requireRole(['admin
     if (!header) {
       return res.status(404).json({ error: `No se encontró NTASVTAS para NV=${nv}` });
     }
-    if (!header.idpedido) {
-      return res.status(409).json({ error: `Se encontró NTASVTAS para NV=${nv}, pero vino sin idpedido (no se puede generar cotización)`, details: header });
-    }
 
 
 // Idempotencia: si ya existe una cotización con este NV, devolvemos esa referencia
@@ -1455,7 +1483,9 @@ if (Number.isFinite(nvInt)) {
   }
 }
 
-    const data = await syncOrderFromSql({ idpedido: header.idpedido, partner_id, nv });
+    // No dependemos de idpedido: generamos la cotización con la clave natural
+    // (tipo, sucursal, numero, deposito) y trazabilidad por NV.
+    const data = await syncOrderFromHeader({ header, partner_id, nv, idpedido_hint: header?.idpedido || null });
     return res.json(data);
   } catch (err) {
     const status = err?.status || 500;
