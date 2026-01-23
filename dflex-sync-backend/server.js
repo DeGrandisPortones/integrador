@@ -1288,10 +1288,21 @@ async function syncOrderFromSql({ idpedido, partner_id, nv }) {
 async function getNtavHeaderByNv({ nv, tipo, sucursal, deposito }) {
   const pool = await getSqlPool();
 
-  const request = pool.request();
-  request.input('nv', sql.Int, parseInt(nv, 10));
+  const nvStr = String(nv ?? '').trim();
+  const nvInt = parseInt(nvStr, 10);
 
-  let where = 'numero = @nv';
+  console.log('[getNtavHeaderByNv] input:', { nv, nvStr, nvInt, tipo, sucursal, deposito });
+
+  const request = pool.request();
+  request.input('nvInt', sql.Int, Number.isFinite(nvInt) ? nvInt : null);
+  request.input('nvStr', sql.VarChar, nvStr);
+
+  // numero en NTASVTAS puede ser INT o VARCHAR (según instalaciones históricas).
+  // Por eso intentamos ambos caminos:
+  // - TRY_CONVERT(int, numero) = @nvInt
+  // - numero (trim) = @nvStr
+  let where = '(TRY_CONVERT(int, numero) = @nvInt OR LTRIM(RTRIM(CAST(numero AS varchar(50)))) = @nvStr)';
+
   if (tipo) {
     where += ' AND tipo = @tipo';
     request.input('tipo', sql.VarChar, String(tipo));
@@ -1305,7 +1316,10 @@ async function getNtavHeaderByNv({ nv, tipo, sucursal, deposito }) {
     request.input('deposito', sql.Int, parseInt(deposito, 10));
   }
 
-  const result = await request.query(`
+  console.log('[getNtavHeaderByNv] WHERE:', where);
+
+  // Log del SQL (compacto) para debug
+  const sqlText = `
     SELECT TOP (5)
       fecha,
       tipo,
@@ -1338,14 +1352,29 @@ async function getNtavHeaderByNv({ nv, tipo, sucursal, deposito }) {
     FROM Portones.dbo.NTASVTAS
     WHERE ${where}
     ORDER BY fecha DESC, idpedido DESC
-  `);
+  `;
+
+  console.log('[getNtavHeaderByNv] SQL:', sqlText.replace(/\s+/g, ' ').trim());
+
+  const result = await request.query(sqlText);
 
   const rows = result.recordset || [];
+  console.log('[getNtavHeaderByNv] rows.length:', rows.length);
+  console.log('[getNtavHeaderByNv] top rows preview:', rows.slice(0, 3).map(r => ({
+    fecha: r.fecha,
+    tipo: r.tipo,
+    sucursal: r.sucursal,
+    numero: r.numero,
+    deposito: r.deposito,
+    idpedido: r.idpedido,
+  })));
+
   if (!rows.length) return null;
 
   // Si no se pasan suficientes filtros y hay potencial ambigüedad, usamos el más reciente.
   return rows[0];
 }
+
 
 // Listado liviano de portones desde Pre_Produccion (solo NV/Nombre/RazSoc)
 function mapPortonListRow(row) {
@@ -1357,7 +1386,7 @@ function mapPortonListRow(row) {
   return { ID: id, NV: nv, Nombre: nombre, RazSoc: razsoc };
 }
 app.post('/api/sync/order-from-sql', requireAuth, attachRole, requireRole(['admin']), async (req, res) => {
-  const { idpedido, partner_id } = req.body;
+  const { idpedido, partner_id, nv } = req.body;
 
   try {
     const data = await syncOrderFromSql({ idpedido, partner_id, nv });
@@ -1384,9 +1413,15 @@ app.post('/api/sync/order-from-nv', requireAuth, attachRole, requireRole(['admin
   }
 
   try {
+    console.log('[POST /api/sync/order-from-nv] body:', { nv, tipo, sucursal, deposito, partner_id });
+
     const header = await getNtavHeaderByNv({ nv, tipo, sucursal, deposito });
-    if (!header?.idpedido) {
+    console.log('[POST /api/sync/order-from-nv] header:', header);
+    if (!header) {
       return res.status(404).json({ error: `No se encontró NTASVTAS para NV=${nv}` });
+    }
+    if (!header.idpedido) {
+      return res.status(409).json({ error: `Se encontró NTASVTAS para NV=${nv}, pero vino sin idpedido (no se puede generar cotización)`, details: header });
     }
 
 
@@ -1423,6 +1458,24 @@ if (Number.isFinite(nvInt)) {
     }
 
     return res.status(status).json({ error: msg });
+  }
+});
+
+// ---------------------
+// DEBUG (admin): probar búsqueda NTASVTAS por NV sin generar cotización
+// GET /api/debug/ntasvtas-by-nv?nv=3948
+// ---------------------
+app.get('/api/debug/ntasvtas-by-nv', requireAuth, attachRole, requireRole(['admin']), async (req, res) => {
+  const { nv, tipo, sucursal, deposito } = req.query || {};
+  if (!nv) return res.status(400).json({ error: 'Falta parámetro: nv' });
+
+  try {
+    const header = await getNtavHeaderByNv({ nv, tipo, sucursal, deposito });
+    if (!header) return res.status(404).json({ error: `No se encontró NTASVTAS para NV=${nv}` });
+    return res.json({ ok: true, header });
+  } catch (err) {
+    console.error('Error en /api/debug/ntasvtas-by-nv:', err);
+    return res.status(500).json({ error: 'Error interno en debug NTASVTAS', details: err.message || String(err) });
   }
 });
 

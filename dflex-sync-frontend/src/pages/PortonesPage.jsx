@@ -55,6 +55,8 @@ export default function PortonesPage({ authHeader, canSyncOdoo }) {
     const nv = row?.NV;
     if (!nv) return;
 
+    console.log('[Portones] Enviando NV:', nv);
+
     if (!canSyncOdoo) {
       window.alert('No tenés permisos para enviar a Odoo (solo admin).');
       return;
@@ -78,6 +80,8 @@ export default function PortonesPage({ authHeader, canSyncOdoo }) {
       });
 
       const payloadText = await res.text();
+      console.log('[Portones] response status:', res.status);
+      console.log('[Portones] payloadText:', payloadText);
       let payload = null;
       try {
         payload = payloadText ? JSON.parse(payloadText) : null;
