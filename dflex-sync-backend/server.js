@@ -1055,132 +1055,269 @@ app.get('/api/public/pre-produccion-valores', async (req, res) => {
 // ---------------------
 // API Sincronización Odoo (privada)
 // ---------------------
+
+
+// ---------------------
+// Sync a Odoo desde SQL (reutilizable)
+// ---------------------
+async function syncOrderFromSql({ idpedido, partner_id }) {
+  if (!idpedido) {
+    const err = new Error('Falta parámetro: idpedido es requerido');
+    err.status = 400;
+    throw err;
+  }
+
+  const header = await getNtavHeader(idpedido);
+  if (!header) {
+    const err = new Error(`No se encontró NTASVTAS.idpedido = ${idpedido}`);
+    err.status = 404;
+    throw err;
+  }
+
+  let partnerIdFinal = partner_id;
+  if (!partnerIdFinal) {
+    partnerIdFinal = await getOrCreatePartnerFromHeader(header);
+  }
+
+  const lines = await getNtavLinesFromHeader(header);
+  if (!lines.length) {
+    const err = new Error(
+      `No se encontraron líneas en INTASVTAS para la nota (tipo=${header.tipo}, sucursal=${header.sucursal}, numero=${header.numero}, deposito=${header.deposito})`
+    );
+    err.status = 404;
+    throw err;
+  }
+
+  const clientOrderRefParts = [header.tipo || '', header.sucursal || '', header.numero || ''].filter((p) => p !== '');
+  const clientOrderRef = clientOrderRefParts.join('-');
+
+  const orderVals = {
+    partner_id: partnerIdFinal,
+    origin: `NTASVTAS ${idpedido}`,
+  };
+
+  if (ODOO_COMPANY_ID) orderVals.company_id = ODOO_COMPANY_ID;
+
+  const odooDate = formatDateForOdoo(header.fecha);
+  if (odooDate) orderVals.date_order = odooDate;
+  if (clientOrderRef) orderVals.client_order_ref = clientOrderRef;
+
+  const orderId = await odooExecuteKw('sale.order', 'create', [orderVals]);
+  console.log('Creado sale.order ID', orderId);
+
+  let createdLines = 0;
+  const missingProducts = [];
+
+  for (const line of lines) {
+    const rawCode = line.producto || '';
+    const rawDesc = line.descripcion || '';
+
+    const productoCodigo = rawCode.trim();
+    const descripcion = rawDesc.trim();
+
+    let productId = null;
+
+    if (productoCodigo) {
+      const idsByCode = await odooExecuteKw('product.product', 'search', [[['default_code', '=', productoCodigo]]], {
+        limit: 1,
+      });
+      if (idsByCode.length) productId = idsByCode[0];
+    }
+
+    if (!productId && descripcion) {
+      const idsByName = await odooExecuteKw('product.product', 'search', [[['name', 'ilike', descripcion]]], { limit: 1 });
+      if (idsByName.length) productId = idsByName[0];
+    }
+
+    if (!productId) {
+      missingProducts.push({ producto: productoCodigo, descripcion });
+      continue;
+    }
+
+    const priceUnit = (line.preneto && line.preneto !== 0 ? line.preneto : line.precio) || 0;
+    const discount = line.bonific || 0;
+    const qty = line.cantidad || 0;
+
+    const lineVals = {
+      order_id: orderId,
+      product_id: productId,
+      name: descripcion || productoCodigo,
+      product_uom_qty: qty,
+      price_unit: priceUnit,
+      discount,
+    };
+
+    await odooExecuteKw('sale.order.line', 'create', [lineVals]);
+    createdLines += 1;
+  }
+
+  const orders = await odooExecuteKw('sale.order', 'read', [[orderId], ['amount_total']]);
+  const amountTotal = orders[0]?.amount_total || 0;
+
+  const numero = header.numero;
+  if (numero != null) {
+    const portonDomain = [['x_nota_de_venta', '=', numero]];
+    const portonIds = await odooExecuteKw('x_dflex.porton', 'search', [portonDomain], { limit: 1 });
+
+    if (portonIds.length) {
+      await odooExecuteKw('x_dflex.porton', 'write', [
+        portonIds,
+        {
+          x_studio_sale_order_id: orderId,
+          x_base_value: amountTotal,
+        },
+      ]);
+      console.log(`Portón ${portonIds[0]} vinculado al pedido ${orderId}`);
+    } else {
+      console.log(`No se encontró x_dflex.porton con x_nota_de_venta = ${numero} (no se vincula)`);
+    }
+  }
+
+  return {
+    success: true,
+    order_id: orderId,
+    amount_total: amountTotal,
+    created_lines: createdLines,
+    missing_products: missingProducts,
+    header,
+  };
+}
+
+// Busca NTASVTAS por NV (numero) y opcionalmente tipo/sucursal/deposito
+async function getNtavHeaderByNv({ nv, tipo, sucursal, deposito }) {
+  const pool = await getSqlPool();
+
+  const request = pool.request();
+  request.input('nv', sql.Int, parseInt(nv, 10));
+
+  let where = 'numero = @nv';
+  if (tipo) {
+    where += ' AND tipo = @tipo';
+    request.input('tipo', sql.VarChar, String(tipo));
+  }
+  if (sucursal !== undefined && sucursal !== null && sucursal !== '') {
+    where += ' AND sucursal = @sucursal';
+    request.input('sucursal', sql.Int, parseInt(sucursal, 10));
+  }
+  if (deposito !== undefined && deposito !== null && deposito !== '') {
+    where += ' AND deposito = @deposito';
+    request.input('deposito', sql.Int, parseInt(deposito, 10));
+  }
+
+  const result = await request.query(`
+    SELECT TOP (5)
+      fecha,
+      tipo,
+      sucursal,
+      numero,
+      deposito,
+      cliente,
+      nombre,
+      direccion,
+      localidad,
+      cp,
+      provincia,
+      fpago,
+      vendedor,
+      operador,
+      zona,
+      iva,
+      cuit,
+      ibrutos,
+      observ,
+      retrep,
+      fechaent,
+      dirent,
+      obs AS obs2,
+      oc,
+      idpedido,
+      condicion,
+      factura,
+      remito
+    FROM Portones.dbo.NTASVTAS
+    WHERE ${where}
+    ORDER BY fecha DESC, idpedido DESC
+  `);
+
+  const rows = result.recordset || [];
+  if (!rows.length) return null;
+
+  // Si no se pasan suficientes filtros y hay potencial ambigüedad, usamos el más reciente.
+  return rows[0];
+}
+
+// Listado liviano de portones desde Pre_Produccion (solo NV/Nombre/RazSoc)
+function mapPortonListRow(row) {
+  const nv = row?.NV ?? row?.nv ?? null;
+  const nombre = row?.Nombre ?? row?.nombre ?? '';
+  const razsoc = row?.RazSoc ?? row?.razsoc ?? row?.RAZSOC ?? '';
+  const id = row?.ID ?? row?.id ?? null;
+
+  return { ID: id, NV: nv, Nombre: nombre, RazSoc: razsoc };
+}
 app.post('/api/sync/order-from-sql', requireAuth, attachRole, requireRole(['admin']), async (req, res) => {
   const { idpedido, partner_id } = req.body;
 
-  if (!idpedido) {
-    return res.status(400).json({ error: 'Falta parámetro: idpedido es requerido' });
+  try {
+    const data = await syncOrderFromSql({ idpedido, partner_id });
+    return res.json(data);
+  } catch (err) {
+    const status = err?.status || 500;
+    const msg = err?.message || String(err);
+
+    if (status >= 500) {
+      console.error('Error en /api/sync/order-from-sql:', err);
+      return res.status(status).json({ error: 'Error interno sincronizando con Odoo', details: msg });
+    }
+
+    return res.status(status).json({ error: msg });
+  }
+});
+
+// Variante: sincronizar por NV (numero). Útil para botón "Enviar a Odoo" desde listado.
+app.post('/api/sync/order-from-nv', requireAuth, attachRole, requireRole(['admin']), async (req, res) => {
+  const { nv, tipo, sucursal, deposito, partner_id } = req.body || {};
+
+  if (!nv) {
+    return res.status(400).json({ error: 'Falta parámetro: nv es requerido' });
   }
 
   try {
-    const header = await getNtavHeader(idpedido);
-    if (!header) {
-      return res.status(404).json({ error: `No se encontró NTASVTAS.idpedido = ${idpedido}` });
+    const header = await getNtavHeaderByNv({ nv, tipo, sucursal, deposito });
+    if (!header?.idpedido) {
+      return res.status(404).json({ error: `No se encontró NTASVTAS para NV=${nv}` });
     }
 
-    let partnerIdFinal = partner_id;
-    if (!partnerIdFinal) {
-      partnerIdFinal = await getOrCreatePartnerFromHeader(header);
-    }
-
-    const lines = await getNtavLinesFromHeader(header);
-    if (!lines.length) {
-      return res.status(404).json({
-        error: `No se encontraron líneas en INTASVTAS para la nota (tipo=${header.tipo}, sucursal=${header.sucursal}, numero=${header.numero}, deposito=${header.deposito})`,
-      });
-    }
-
-    const clientOrderRefParts = [header.tipo || '', header.sucursal || '', header.numero || ''].filter((p) => p !== '');
-    const clientOrderRef = clientOrderRefParts.join('-');
-
-    const orderVals = {
-      partner_id: partnerIdFinal,
-      origin: `NTASVTAS ${idpedido}`,
-    };
-
-    if (ODOO_COMPANY_ID) orderVals.company_id = ODOO_COMPANY_ID;
-
-    const odooDate = formatDateForOdoo(header.fecha);
-    if (odooDate) orderVals.date_order = odooDate;
-    if (clientOrderRef) orderVals.client_order_ref = clientOrderRef;
-
-    const orderId = await odooExecuteKw('sale.order', 'create', [orderVals]);
-    console.log('Creado sale.order ID', orderId);
-
-    let createdLines = 0;
-    const missingProducts = [];
-
-    for (const line of lines) {
-      const rawCode = line.producto || '';
-      const rawDesc = line.descripcion || '';
-
-      const productoCodigo = rawCode.trim();
-      const descripcion = rawDesc.trim();
-
-      let productId = null;
-
-      if (productoCodigo) {
-        const idsByCode = await odooExecuteKw('product.product', 'search', [[['default_code', '=', productoCodigo]]], {
-          limit: 1,
-        });
-        if (idsByCode.length) productId = idsByCode[0];
-      }
-
-      if (!productId && descripcion) {
-        const idsByName = await odooExecuteKw('product.product', 'search', [[['name', 'ilike', descripcion]]], {
-          limit: 1,
-        });
-        if (idsByName.length) productId = idsByName[0];
-      }
-
-      if (!productId) {
-        console.warn(`Producto no encontrado en Odoo, se salta la línea. COD=${productoCodigo}, DESC=${descripcion}`);
-        missingProducts.push({ codigo: productoCodigo, descripcion });
-        continue;
-      }
-
-      const priceUnit = (line.preneto && line.preneto !== 0 ? line.preneto : line.precio) || 0;
-      const discount = line.bonific || 0;
-      const qty = line.cantidad || 0;
-
-      const lineVals = {
-        order_id: orderId,
-        product_id: productId,
-        name: descripcion || productoCodigo,
-        product_uom_qty: qty,
-        price_unit: priceUnit,
-        discount,
-      };
-
-      await odooExecuteKw('sale.order.line', 'create', [lineVals]);
-      createdLines += 1;
-    }
-
-    const orders = await odooExecuteKw('sale.order', 'read', [[orderId], ['amount_total']]);
-    const amountTotal = orders[0]?.amount_total || 0;
-
-    const numero = header.numero;
-    if (numero != null) {
-      const portonDomain = [['x_nota_de_venta', '=', numero]];
-      const portonIds = await odooExecuteKw('x_dflex.porton', 'search', [portonDomain], { limit: 1 });
-
-      if (portonIds.length) {
-        await odooExecuteKw('x_dflex.porton', 'write', [
-          portonIds,
-          {
-            x_studio_sale_order_id: orderId,
-            x_base_value: amountTotal,
-          },
-        ]);
-        console.log(`Portón ${portonIds[0]} vinculado al pedido ${orderId}`);
-      } else {
-        console.log(`No se encontró x_dflex.porton con x_nota_de_venta = ${numero} (no se vincula)`);
-      }
-    }
-
-    return res.json({
-      success: true,
-      order_id: orderId,
-      amount_total: amountTotal,
-      lines_read: lines.length,
-      lines_created: createdLines,
-      missing_products: missingProducts,
-      partner_id: partnerIdFinal,
-    });
+    const data = await syncOrderFromSql({ idpedido: header.idpedido, partner_id });
+    return res.json(data);
   } catch (err) {
-    console.error('Error en /api/sync/order-from-sql:', err);
+    const status = err?.status || 500;
+    const msg = err?.message || String(err);
+
+    if (status >= 500) {
+      console.error('Error en /api/sync/order-from-nv:', err);
+      return res.status(status).json({ error: 'Error interno sincronizando con Odoo', details: msg });
+    }
+
+    return res.status(status).json({ error: msg });
+  }
+});
+
+// ---------------------
+// API Portones (privada) - listado reducido: NV/Nombre/RazSoc
+// ---------------------
+app.get('/api/portones', requireAuth, attachRole, async (req, res) => {
+  const { nv } = req.query;
+
+  try {
+    const rows = await getPreProduccionRows(nv);
+    const mapped = (rows || []).map(mapPortonListRow);
+
+    return res.json({ count: mapped.length, rows: mapped });
+  } catch (err) {
+    console.error('Error en /api/portones:', err);
     return res.status(500).json({
-      error: 'Error interno sincronizando con Odoo',
+      error: 'Error interno obteniendo portones',
       details: err.message || String(err),
     });
   }

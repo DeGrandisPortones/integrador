@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import TablePage from './pages/TablePage';
 import FormulasPage from './pages/FormulasPage';
 import ImportPage from './pages/ImportPage';
+import PortonesPage from './pages/PortonesPage';
 import ViewPdf from './pages/ViewPdf';
 import PdfLinkView from './pages/PdfLinkView';
 import LoginPage from './pages/LoginPage.jsx';
@@ -152,6 +153,11 @@ function MainApp({ session, signOut, role }) {
   }, [accessToken]);
 
   // ✅ permissions calculadas desde role
+  const canSyncOdoo = useMemo(() => {
+    const r = String(role || 'viewer').trim().toLowerCase();
+    return r === 'admin';
+  }, [role]);
+
   const permissions = useMemo(() => {
     const r = String(role || 'viewer').trim().toLowerCase();
     return {
@@ -488,7 +494,15 @@ function MainApp({ session, signOut, role }) {
             >
               Importar Excel
             </button>
-          </nav>
+          
+            <button
+              type="button"
+              className={currentPage === 'portones' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentPage('portones')}
+            >
+              Portones (Enviar a Odoo)
+            </button>
+</nav>
 
           <button type="button" className="btn-secondary" onClick={() => signOut()}>
             Cerrar sesión
