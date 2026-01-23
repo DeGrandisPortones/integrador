@@ -576,6 +576,11 @@ function MainApp({ session, signOut, role }) {
 
 
       {currentPage === 'pdf' && <ViewPdf />}
+
+
+      {currentPage === 'portones' && (
+        <PortonesPage authHeader={authHeader} canSyncOdoo={canSyncOdoo} />
+      )}
     </div>
   );
 }
