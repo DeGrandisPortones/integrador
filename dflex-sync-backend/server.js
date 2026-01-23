@@ -781,7 +781,113 @@ async function odooExecuteKw(model, method, args = [], kwargs = {}) {
     args: [ODOO_DB, uid, ODOO_PASSWORD, model, method, args, finalKwargs],
   });
 
-  return result;
+  // =====================
+// CAMPOS CUSTOM EN ODOO
+// =====================
+
+const ODOO_SALE_ORDER_NV_FIELD = 'x_porton_nv'; // Integer: NV del sistema viejo
+
+async function ensureSaleOrderNvField() {
+  // Verifica / crea el campo x_porton_nv en sale.order para guardar el NV (sistema viejo)
+  const existing = await odooExecuteKw(
+    'ir.model.fields',
+    'search_read',
+    [[['model', '=', 'sale.order'], ['name', '=', ODOO_SALE_ORDER_NV_FIELD]]],
+    { fields: ['id', 'name', 'ttype'], limit: 1 }
+  );
+
+  if (existing && existing.length) return existing[0].id;
+
+  const modelIds = await odooExecuteKw('ir.model', 'search', [[['model', '=', 'sale.order']]], { limit: 1 });
+  if (!modelIds || !modelIds.length) {
+    throw new Error('No se encontró ir.model para sale.order (no se puede crear campo NV)');
+  }
+
+  const fieldVals = {
+    name: ODOO_SALE_ORDER_NV_FIELD,
+    field_description: 'NV (Portón)',
+    model_id: modelIds[0],
+    ttype: 'integer',
+    state: 'manual',
+    required: false,
+    readonly: false,
+    store: true,
+    help: 'Número NV del sistema anterior (portones).',
+  };
+
+  const fieldId = await odooExecuteKw('ir.model.fields', 'create', [fieldVals]);
+  console.log('Creado campo custom en Odoo:', ODOO_SALE_ORDER_NV_FIELD, 'id=', fieldId);
+  return fieldId;
+}
+
+async function getAlreadySentNvSet(nvList) {
+  // Devuelve Set<string> de NVs (como string) que ya existen en sale.order.x_porton_nv
+  if (!Array.isArray(nvList) || !nvList.length) return new Set();
+
+  // Asegura que el campo exista para poder buscar
+  await ensureSaleOrderNvField();
+
+  const ints = nvList
+    .map((v) => parseInt(String(v).trim(), 10))
+    .filter((n) => Number.isFinite(n));
+
+  const sent = new Set();
+
+  const CHUNK = 250;
+  for (let i = 0; i < ints.length; i += CHUNK) {
+    const chunk = ints.slice(i, i + CHUNK);
+
+    const rows = await odooExecuteKw(
+      'sale.order',
+      'search_read',
+      [[['x_porton_nv', 'in', chunk]]],
+      { fields: ['x_porton_nv'], limit: 5000 }
+    );
+
+    for (const r of rows || []) {
+      const val = r?.x_porton_nv;
+      if (val === null || val === undefined) continue;
+      sent.add(String(val).trim());
+    }
+  }
+
+  return sent;
+}
+
+function extractRowDateAny(row) {
+  // Intenta extraer una fecha desde columnas comunes de Pre_Produccion / NTASVTAS
+  const keys = [
+    'Fecha',
+    'FECHA',
+    'fecha',
+    'FechaAlta',
+    'FECHAALTA',
+    'fecha_alta',
+    'Fec',
+    'FEC',
+    'fec',
+    'FecAlta',
+    'fecalta',
+    'FechaPedido',
+    'FECHAPEDIDO',
+    'fechaPedido',
+    'fecha_pedido',
+    'FechaNV',
+    'FECHANV',
+    'fechanv',
+  ];
+
+  for (const k of keys) {
+    if (row && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+      const d = row[k] instanceof Date ? row[k] : new Date(row[k]);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+  }
+
+  return null;
+}
+
+return result;
 }
 
 // =====================
@@ -1060,7 +1166,7 @@ app.get('/api/public/pre-produccion-valores', async (req, res) => {
 // ---------------------
 // Sync a Odoo desde SQL (reutilizable)
 // ---------------------
-async function syncOrderFromSql({ idpedido, partner_id }) {
+async function syncOrderFromSql({ idpedido, partner_id, nv }) {
   if (!idpedido) {
     const err = new Error('Falta parámetro: idpedido es requerido');
     err.status = 400;
@@ -1095,6 +1201,16 @@ async function syncOrderFromSql({ idpedido, partner_id }) {
     partner_id: partnerIdFinal,
     origin: `NTASVTAS ${idpedido}`,
   };
+  if (nv !== undefined && nv !== null && String(nv).trim() !== '') {
+    await ensureSaleOrderNvField();
+    const nvInt = parseInt(String(nv).trim(), 10);
+    if (Number.isFinite(nvInt)) {
+      orderVals[ODOO_SALE_ORDER_NV_FIELD] = nvInt;
+      // Hace más visible el NV en la cotización sin romper la secuencia de Odoo
+      orderVals.origin = `NV ${nvInt} - NTASVTAS ${idpedido}`;
+    }
+  }
+
 
   if (ODOO_COMPANY_ID) orderVals.company_id = ODOO_COMPANY_ID;
 
@@ -1259,7 +1375,7 @@ app.post('/api/sync/order-from-sql', requireAuth, attachRole, requireRole(['admi
   const { idpedido, partner_id } = req.body;
 
   try {
-    const data = await syncOrderFromSql({ idpedido, partner_id });
+    const data = await syncOrderFromSql({ idpedido, partner_id, nv });
     return res.json(data);
   } catch (err) {
     const status = err?.status || 500;
@@ -1288,7 +1404,29 @@ app.post('/api/sync/order-from-nv', requireAuth, attachRole, requireRole(['admin
       return res.status(404).json({ error: `No se encontró NTASVTAS para NV=${nv}` });
     }
 
-    const data = await syncOrderFromSql({ idpedido: header.idpedido, partner_id });
+
+// Idempotencia: si ya existe una cotización con este NV, devolvemos esa referencia
+const nvInt = parseInt(String(nv).trim(), 10);
+if (Number.isFinite(nvInt)) {
+  await ensureSaleOrderNvField();
+  const existing = await odooExecuteKw(
+    'sale.order',
+    'search_read',
+    [[['x_porton_nv', '=', nvInt]]],
+    { fields: ['id', 'name', 'amount_total'], limit: 1, order: 'id desc' }
+  );
+
+  if (existing && existing.length) {
+    return res.json({
+      already_sent: true,
+      order_id: existing[0].id,
+      name: existing[0].name,
+      amount_total: existing[0].amount_total,
+    });
+  }
+}
+
+    const data = await syncOrderFromSql({ idpedido: header.idpedido, partner_id, nv });
     return res.json(data);
   } catch (err) {
     const status = err?.status || 500;
@@ -1310,10 +1448,52 @@ app.get('/api/portones', requireAuth, attachRole, async (req, res) => {
   const { nv } = req.query;
 
   try {
-    const rows = await getPreProduccionRows(nv);
-    const mapped = (rows || []).map(mapPortonListRow);
+    let rows = await getPreProduccionRows(nv);
 
-    return res.json({ count: mapped.length, rows: mapped });
+    // 1) Filtro por fecha (>= 2026-01-01). Si la tabla no tiene fecha detectable, no rompe.
+    const MIN_DATE_STR = '2026-01-01';
+    const minDate = new Date(`${MIN_DATE_STR}T00:00:00.000Z`);
+
+    const hasAnyDate = (rows || []).some((r) => !!extractRowDateAny(r));
+    if (hasAnyDate) {
+      rows = (rows || []).filter((r) => {
+        const d = extractRowDateAny(r);
+        if (!d) return false; // si hay fecha en general, pero esta fila no tiene, la excluimos
+        return d.getTime() >= minDate.getTime();
+      });
+    }
+
+    // 2) Solo pendientes de enviar a Odoo: excluye los NV que ya tengan cotización registrada por x_porton_nv
+    const nvList = (rows || [])
+      .map((r) => (r?.NV !== null && r?.NV !== undefined ? String(r.NV).trim() : ''))
+      .filter((v) => v !== '');
+
+
+let sentSet = new Set();
+let pendingFilterOk = true;
+
+try {
+  sentSet = await getAlreadySentNvSet(nvList);
+} catch (odooErr) {
+  pendingFilterOk = false;
+  console.error('No se pudo filtrar pendientes contra Odoo:', odooErr?.message || odooErr);
+}
+
+const pending = pendingFilterOk
+  ? (rows || []).filter((r) => {
+      const nvVal = r?.NV !== null && r?.NV !== undefined ? String(r.NV).trim() : '';
+      if (!nvVal) return false;
+      return !sentSet.has(nvVal);
+    })
+  : (rows || []);
+
+    const mapped = pending.map(mapPortonListRow);
+
+    return res.json({
+      count: mapped.length,
+      rows: mapped,
+      meta: { pending_only: pendingFilterOk, min_date: MIN_DATE_STR, skipped_date_filter: !hasAnyDate },
+    });
   } catch (err) {
     console.error('Error en /api/portones:', err);
     return res.status(500).json({
@@ -1322,6 +1502,7 @@ app.get('/api/portones', requireAuth, attachRole, async (req, res) => {
     });
   }
 });
+
 
 // ---------------------
 // API Pre_Produccion (privada)
