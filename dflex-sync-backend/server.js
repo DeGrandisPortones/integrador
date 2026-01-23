@@ -1245,9 +1245,18 @@ async function syncOrderFromHeader({ header, partner_id, nv, idpedido_hint }) {
       continue;
     }
 
-    const priceUnit = (line.preneto && line.preneto !== 0 ? line.preneto : line.precio) || 0;
-    const discount = line.bonific || 0;
-    const qty = line.cantidad || 0;
+function toNumber(v) {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const s = String(v).trim().replace(/\./g, '').replace(',', '.'); // soporta "1.234,56"
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const priceUnit = toNumber(line.precio);   // <-- SIEMPRE INTASVTAS.precio
+const discount = toNumber(line.bonific);
+const qty = toNumber(line.cantidad);
+
 
     const lineVals = {
       order_id: orderId,
