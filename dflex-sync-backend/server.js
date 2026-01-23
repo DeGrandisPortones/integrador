@@ -1297,11 +1297,20 @@ async function getNtavHeaderByNv({ nv, tipo, sucursal, deposito }) {
   request.input('nvInt', sql.Int, Number.isFinite(nvInt) ? nvInt : null);
   request.input('nvStr', sql.VarChar, nvStr);
 
-  // numero en NTASVTAS puede ser INT o VARCHAR (según instalaciones históricas).
-  // Por eso intentamos ambos caminos:
-  // - TRY_CONVERT(int, numero) = @nvInt
-  // - numero (trim) = @nvStr
-  let where = '(TRY_CONVERT(int, numero) = @nvInt OR LTRIM(RTRIM(CAST(numero AS varchar(50)))) = @nvStr)';
+// numero en NTASVTAS puede ser INT o VARCHAR (según instalaciones históricas).
+// Evitamos TRY_CONVERT (no existe en versiones antiguas de SQL Server).
+// Estrategia segura:
+// 1) Comparamos como string (CAST a varchar) contra @nvStr (cubre int/varchar sin errores).
+// 2) Si nvInt es válido, también comparamos por valor numérico para soportar ceros a la izquierda.
+const numeroExpr = "LTRIM(RTRIM(CAST(numero AS varchar(50))))";
+
+const hasNvInt = Number.isFinite(nvInt);
+let where = `(${numeroExpr} = @nvStr`;
+if (hasNvInt) {
+  where += ` OR (${numeroExpr} <> '' AND ${numeroExpr} NOT LIKE '%[^0-9]%' AND CAST(${numeroExpr} AS int) = @nvInt)`;
+}
+where += `)`;
+
 
   if (tipo) {
     where += ' AND tipo = @tipo';
