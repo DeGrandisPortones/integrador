@@ -153,6 +153,10 @@ export default function PortonesPage({ authHeader, canSyncOdoo }) {
         )}
       </div>
 
+      <div className="info" style={{ marginTop: 8 }}>
+        Mostrando solo pendientes de enviar a Odoo, con fecha a partir del 01/01/2026.
+      </div>
+
       {error && <div className="error">⚠ {error}</div>}
 
       <div className="table-wrap" style={{ marginTop: 12 }}>
