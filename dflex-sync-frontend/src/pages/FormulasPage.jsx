@@ -3,6 +3,15 @@ import { useEffect, useMemo, useState } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
+const RESOLVER_OPTIONS = [
+  { value: 'identity', label: 'Directo' },
+  { value: 'min', label: 'Mínimo' },
+  { value: 'max', label: 'Máximo' },
+  { value: 'sum', label: 'Suma' },
+  { value: 'first_non_empty', label: 'Primer valor no vacío' },
+  { value: 'join_csv', label: 'Unir CSV' },
+];
+
 async function saveFormulaToBackend(columnName, expression, authHeader) {
   const res = await fetch(`${API_BASE_URL}/api/formulas`, {
     method: 'POST',
@@ -17,6 +26,46 @@ async function saveFormulaToBackend(columnName, expression, authHeader) {
   return res.json();
 }
 
+async function fetchMeasurementSourceCatalog(authHeader) {
+  const res = await fetch(`${API_BASE_URL}/api/measurement-source-catalog`, {
+    headers: { ...(authHeader || {}) },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Error HTTP ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+async function fetchPropertyMappings(authHeader) {
+  const res = await fetch(`${API_BASE_URL}/api/property-mappings`, {
+    headers: { ...(authHeader || {}) },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Error HTTP ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+async function savePropertyMappingToBackend(payload, authHeader) {
+  const res = await fetch(`${API_BASE_URL}/api/property-mappings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(authHeader || {}) },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Error HTTP ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+function getResolverLabel(value) {
+  const match = RESOLVER_OPTIONS.find((item) => item.value === value);
+  return match?.label || value || 'Directo';
+}
+
 export default function FormulasPage({ hasData, columns, formulas, permissions, authHeader }) {
   const canEditFormulas = !!permissions?.canEditFormulas;
 
@@ -29,6 +78,29 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
   const [savingCol, setSavingCol] = useState(null);
   const [saveError, setSaveError] = useState('');
 
+  const [mappingCatalog, setMappingCatalog] = useState([]);
+  const [mappingRows, setMappingRows] = useState([]);
+  const [mappingDrafts, setMappingDrafts] = useState({});
+  const [mappingLoading, setMappingLoading] = useState(false);
+  const [mappingError, setMappingError] = useState('');
+  const [savingMappingCol, setSavingMappingCol] = useState(null);
+
+  const targetProperties = useMemo(() => {
+    const set = new Set([...(columns || [])]);
+    (mappingRows || []).forEach((row) => {
+      if (row?.target_property) set.add(String(row.target_property));
+    });
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'es'));
+  }, [columns, mappingRows]);
+
+  const catalogBySection = useMemo(() => {
+    const map = new Map();
+    (mappingCatalog || []).forEach((section) => {
+      map.set(section.section_key, section);
+    });
+    return map;
+  }, [mappingCatalog]);
+
   useEffect(() => {
     const initial = {};
     (columns || []).forEach((col) => {
@@ -37,9 +109,54 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     setDrafts(initial);
   }, [columns, formulas]);
 
-  if (!hasData) {
-    return <div className="info">No hay datos de Pre_Producción para listar propiedades todavía.</div>;
-  }
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMappings() {
+      setMappingLoading(true);
+      setMappingError('');
+      try {
+        const [catalogData, mappingsData] = await Promise.all([
+          fetchMeasurementSourceCatalog(authHeader),
+          fetchPropertyMappings(authHeader),
+        ]);
+
+        if (cancelled) return;
+
+        setMappingCatalog(catalogData?.sections || []);
+        setMappingRows(mappingsData?.mappings || []);
+      } catch (err) {
+        console.error('Error cargando catálogo / mappings:', err);
+        if (!cancelled) setMappingError(err.message || 'Error cargando mappings');
+      } finally {
+        if (!cancelled) setMappingLoading(false);
+      }
+    }
+
+    loadMappings();
+    return () => { cancelled = true; };
+  }, [authHeader]);
+
+  useEffect(() => {
+    const byTarget = new Map();
+    (mappingRows || []).forEach((row) => {
+      byTarget.set(String(row.target_property), row);
+    });
+
+    const next = {};
+    targetProperties.forEach((property) => {
+      const existing = byTarget.get(String(property));
+      next[property] = {
+        target_property: property,
+        source_app: existing?.source_app || 'presupuestador',
+        source_section: existing?.source_section || '',
+        source_path: existing?.source_path || '',
+        resolver: existing?.resolver || 'identity',
+        is_active: existing?.is_active !== false,
+      };
+    });
+    setMappingDrafts(next);
+  }, [targetProperties, mappingRows]);
 
   async function handleLoadSampleRow(e) {
     e.preventDefault();
@@ -254,6 +371,68 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     handleSaveColumnFormula(col);
   }
 
+  function setMappingDraft(targetProperty, patch) {
+    setMappingDrafts((current) => ({
+      ...current,
+      [targetProperty]: {
+        ...(current[targetProperty] || {
+          target_property: targetProperty,
+          source_app: 'presupuestador',
+          source_section: '',
+          source_path: '',
+          resolver: 'identity',
+          is_active: true,
+        }),
+        ...(patch || {}),
+      },
+    }));
+  }
+
+  async function handleSaveMapping(targetProperty) {
+    if (!canEditFormulas) {
+      window.alert('No tenés permisos para editar mappings.');
+      return;
+    }
+
+    const draft = mappingDrafts[targetProperty];
+    if (!draft) return;
+
+    if (!draft.source_section || !draft.source_path) {
+      window.alert(`La propiedad "${targetProperty}" necesita sección y campo origen antes de guardar.`);
+      return;
+    }
+
+    const section = catalogBySection.get(draft.source_section);
+    const field = section?.fields?.find((item) => item.path === draft.source_path);
+
+    const ok = window.confirm(
+      `¿Guardar mapping para "${targetProperty}"?\n\n` +
+      `Sección: ${section?.section_label || draft.source_section}\n` +
+      `Campo: ${field?.label || draft.source_path}\n` +
+      `Resolver: ${getResolverLabel(draft.resolver)}\n` +
+      `Activo: ${draft.is_active ? 'Sí' : 'No'}`
+    );
+    if (!ok) return;
+
+    setSavingMappingCol(targetProperty);
+    setMappingError('');
+    try {
+      const data = await savePropertyMappingToBackend(draft, authHeader);
+      const savedRow = data?.mapping;
+      setMappingRows((current) => {
+        const next = (current || []).filter((item) => String(item.target_property) !== String(targetProperty));
+        if (savedRow) next.push(savedRow);
+        next.sort((a, b) => String(a.target_property).localeCompare(String(b.target_property), 'es'));
+        return next;
+      });
+    } catch (err) {
+      console.error('Error guardando mapping:', err);
+      setMappingError(err.message || 'Error guardando mapping');
+    } finally {
+      setSavingMappingCol(null);
+    }
+  }
+
   const nvToShow =
     sampleRow && sampleRow.NV !== undefined && sampleRow.NV !== null && sampleRow.NV !== ''
       ? sampleRow.NV
@@ -262,103 +441,227 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       : '(sin NV)';
 
   return (
-    <div className="formulas-page">
+    <div className="formulas-page" style={{ display: 'grid', gap: 20 }}>
       <div className="formulas-panel">
         <h2>Fórmulas por propiedad (con NV de prueba)</h2>
+        {!hasData && <div className="info">Todavía no hay datos cargados para probar fórmulas contra un NV.</div>}
+        {hasData && (
+          <>
+            <p className="hint">
+              Ingresá un NV para ver, por cada propiedad, el valor original y el valor calculado con la fórmula actual / borrador.
+            </p>
+
+            <form className="field-row" onSubmit={handleLoadSampleRow}>
+              <label>
+                NV de prueba:&nbsp;
+                <input
+                  type="text"
+                  value={nvInput}
+                  onChange={(e) => setNvInput(e.target.value)}
+                  placeholder="Ej: 1019"
+                />
+              </label>
+              <button type="submit" className="btn-secondary" disabled={sampleLoading}>
+                {sampleLoading ? 'Cargando...' : 'Cargar portón'}
+              </button>
+            </form>
+
+            {!canEditFormulas && <div className="info">Modo solo lectura de fórmulas.</div>}
+            {sampleError && <div className="error">⚠ {sampleError}</div>}
+            {saveError && <div className="error">⚠ {saveError}</div>}
+
+            {sampleRow && (
+              <p className="hint">
+                Mostrando valores para NV <b>{nvToShow}</b>
+              </p>
+            )}
+
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Propiedad</th>
+                    <th>Fórmula (borrador)</th>
+                    <th>Valor original (NV de prueba)</th>
+                    <th>Valor con fórmula</th>
+                    {canEditFormulas && <th>Acción</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {columns.map((col) => {
+                    const expr = drafts[col] ?? '';
+                    const { pre, post } = getPrePostForColumn(col);
+                    const hasSyntaxError = !!compileErrors[col];
+
+                    return (
+                      <tr key={col}>
+                        <td>{col}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              className="formula-input-header"
+                              value={expr}
+                              disabled={!canEditFormulas}
+                              onChange={(e) =>
+                                setDrafts((current) => ({
+                                  ...current,
+                                  [col]: e.target.value,
+                                }))
+                              }
+                              onKeyDown={(e) => {
+                                if (!canEditFormulas) return;
+                                handleFormulaKeyDown(e, col);
+                              }}
+                              placeholder={canEditFormulas ? 'fórmula' : 'solo lectura'}
+                            />
+                            {hasSyntaxError && <span className="col-error" title={compileErrors[col]}>⚠</span>}
+                          </div>
+                        </td>
+                        <td>{pre}</td>
+                        <td>{post}</td>
+                        {canEditFormulas && (
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-small"
+                              onClick={() => handleSaveColumnFormula(col)}
+                              disabled={savingCol === col}
+                            >
+                              {savingCol === col ? 'Guardando…' : 'Guardar'}
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {!sampleRow && !sampleError && (
+              <p className="hint">Cargá un NV de prueba para ver los valores “pre” y “post” en cada propiedad.</p>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="formulas-panel">
+        <h2>Asignador de propiedades desde medición</h2>
         <p className="hint">
-          Ingresá un NV para ver, por cada propiedad, el valor original y el valor calculado con la fórmula actual / borrador.
+          Acá definís qué dato de la planilla de medición de presupuestador alimenta cada propiedad del integrador.
         </p>
 
-        <form className="field-row" onSubmit={handleLoadSampleRow}>
-          <label>
-            NV de prueba:&nbsp;
-            <input
-              type="text"
-              value={nvInput}
-              onChange={(e) => setNvInput(e.target.value)}
-              placeholder="Ej: 1019"
-            />
-          </label>
-          <button type="submit" className="btn-secondary" disabled={sampleLoading}>
-            {sampleLoading ? 'Cargando...' : 'Cargar portón'}
-          </button>
-        </form>
+        {!canEditFormulas && <div className="info">Modo solo lectura de mappings.</div>}
+        {mappingLoading && <div className="info">Cargando catálogo y mappings…</div>}
+        {mappingError && <div className="error">⚠ {mappingError}</div>}
 
-        {!canEditFormulas && <div className="info">Modo solo lectura de fórmulas.</div>}
-        {sampleError && <div className="error">⚠ {sampleError}</div>}
-        {saveError && <div className="error">⚠ {saveError}</div>}
+        {!mappingLoading && (
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Propiedad integrador</th>
+                  <th>Sección origen</th>
+                  <th>Campo origen</th>
+                  <th>Resolver</th>
+                  <th>Activo</th>
+                  {canEditFormulas && <th>Acción</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {targetProperties.map((targetProperty) => {
+                  const draft = mappingDrafts[targetProperty] || {
+                    target_property: targetProperty,
+                    source_app: 'presupuestador',
+                    source_section: '',
+                    source_path: '',
+                    resolver: 'identity',
+                    is_active: true,
+                  };
 
-        {sampleRow && (
-          <p className="hint">
-            Mostrando valores para NV <b>{nvToShow}</b>
-          </p>
-        )}
+                  const currentSection = catalogBySection.get(draft.source_section);
+                  const fields = currentSection?.fields || [];
 
-        <div className="table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Propiedad</th>
-                <th>Fórmula (borrador)</th>
-                <th>Valor original (NV de prueba)</th>
-                <th>Valor con fórmula</th>
-                {canEditFormulas && <th>Acción</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {columns.map((col) => {
-                const expr = drafts[col] ?? '';
-                const { pre, post } = getPrePostForColumn(col);
-                const hasSyntaxError = !!compileErrors[col];
-
-                return (
-                  <tr key={col}>
-                    <td>{col}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input
-                          type="text"
-                          className="formula-input-header"
-                          value={expr}
-                          disabled={!canEditFormulas}
-                          onChange={(e) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [col]: e.target.value,
-                            }))
-                          }
-                          onKeyDown={(e) => {
-                            if (!canEditFormulas) return;
-                            handleFormulaKeyDown(e, col);
-                          }}
-                          placeholder={canEditFormulas ? 'fórmula' : 'solo lectura'}
-                        />
-                        {hasSyntaxError && <span className="col-error" title={compileErrors[col]}>⚠</span>}
-                      </div>
-                    </td>
-                    <td>{pre}</td>
-                    <td>{post}</td>
-                    {canEditFormulas && (
+                  return (
+                    <tr key={`mapping-${targetProperty}`}>
+                      <td style={{ fontWeight: 700 }}>{targetProperty}</td>
                       <td>
-                        <button
-                          type="button"
-                          className="btn-small"
-                          onClick={() => handleSaveColumnFormula(col)}
-                          disabled={savingCol === col}
+                        <select
+                          value={draft.source_section || ''}
+                          disabled={!canEditFormulas}
+                          onChange={(e) => {
+                            const nextSection = e.target.value;
+                            setMappingDraft(targetProperty, {
+                              source_section: nextSection,
+                              source_path: '',
+                            });
+                          }}
                         >
-                          {savingCol === col ? 'Guardando…' : 'Guardar'}
-                        </button>
+                          <option value="">Seleccionar…</option>
+                          {(mappingCatalog || []).map((section) => (
+                            <option key={section.section_key} value={section.section_key}>
+                              {section.section_label}
+                            </option>
+                          ))}
+                        </select>
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {!sampleRow && !sampleError && (
-          <p className="hint">Cargá un NV de prueba para ver los valores “pre” y “post” en cada propiedad.</p>
+                      <td>
+                        <select
+                          value={draft.source_path || ''}
+                          disabled={!canEditFormulas || !draft.source_section}
+                          onChange={(e) => setMappingDraft(targetProperty, { source_path: e.target.value })}
+                        >
+                          <option value="">Seleccionar…</option>
+                          {fields.map((field) => (
+                            <option key={field.path} value={field.path}>
+                              {field.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          value={draft.resolver || 'identity'}
+                          disabled={!canEditFormulas}
+                          onChange={(e) => setMappingDraft(targetProperty, { resolver: e.target.value })}
+                        >
+                          {RESOLVER_OPTIONS.map((item) => (
+                            <option key={item.value} value={item.value}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={draft.is_active !== false}
+                            disabled={!canEditFormulas}
+                            onChange={(e) => setMappingDraft(targetProperty, { is_active: e.target.checked })}
+                          />
+                          {draft.is_active !== false ? 'Sí' : 'No'}
+                        </label>
+                      </td>
+                      {canEditFormulas && (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-small"
+                            onClick={() => handleSaveMapping(targetProperty)}
+                            disabled={savingMappingCol === targetProperty}
+                          >
+                            {savingMappingCol === targetProperty ? 'Guardando…' : 'Guardar'}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

@@ -9,6 +9,12 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const {
+  ensureMeasurementMappingsTable,
+  listMeasurementSourceCatalog,
+  listMeasurementPropertyMappings,
+  upsertMeasurementPropertyMapping,
+} = require('./measurementMappings');
 
 // =====================
 // CONFIGURACIÓN
@@ -58,6 +64,12 @@ if (SUPABASE_DB_URL) {
   console.log('Pool de Supabase inicializado.');
 } else {
   console.warn('ATENCIÓN: SUPABASE_DB_URL no está configurado. API de fórmulas / valores no funcionará.');
+}
+
+if (supabasePool) {
+  ensureMeasurementMappingsTable(supabasePool).catch((err) => {
+    console.error('No se pudo inicializar preproduccion_property_mappings:', err?.message || err);
+  });
 }
 
 if (supabasePool) {
@@ -788,7 +800,6 @@ async function odooExecuteKw(model, method, args = [], kwargs = {}) {
     args: [ODOO_DB, uid, ODOO_PASSWORD, model, method, args, finalKwargs],
   });
 
-
   return result;
 }
 
@@ -880,7 +891,6 @@ function extractRowFechaNV(row) {
 
   return d;
 }
-
 
 // =====================
 // UTILIDADES
@@ -1154,7 +1164,6 @@ app.get('/api/public/pre-produccion-valores', async (req, res) => {
 // API Sincronización Odoo (privada)
 // ---------------------
 
-
 // ---------------------
 // Sync a Odoo desde SQL (reutilizable)
 // ---------------------
@@ -1245,18 +1254,17 @@ async function syncOrderFromHeader({ header, partner_id, nv, idpedido_hint }) {
       continue;
     }
 
-function toNumber(v) {
-  if (v === null || v === undefined) return 0;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-  const s = String(v).trim().replace(/\./g, '').replace(',', '.'); // soporta "1.234,56"
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
-}
+    function toNumber(v) {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+      const s = String(v).trim().replace(/\./g, '').replace(',', '.'); // soporta "1.234,56"
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? n : 0;
+    }
 
-const priceUnit = toNumber(line.prelista);   // <-- SIEMPRE INTASVTAS.precio
-const discount = toNumber(line.bonific);
-const qty = toNumber(line.cantidad);
-
+    const priceUnit = toNumber(line.prelista);   // <-- SIEMPRE INTASVTAS.precio
+    const discount = toNumber(line.bonific);
+    const qty = toNumber(line.cantidad);
 
     const lineVals = {
       order_id: orderId,
@@ -1424,7 +1432,6 @@ async function getNtavHeaderByNv({ nv, tipo, sucursal, deposito }) {
   return rows[0];
 }
 
-
 // Listado liviano de portones desde Pre_Produccion (solo NV/Nombre/RazSoc)
 function mapPortonListRow(row) {
   const nv = row?.NV ?? row?.nv ?? null;
@@ -1470,27 +1477,26 @@ app.post('/api/sync/order-from-nv', requireAuth, attachRole, requireRole(['admin
       return res.status(404).json({ error: `No se encontró NTASVTAS para NV=${nv}` });
     }
 
+    // Idempotencia: si ya existe una cotización con este NV, devolvemos esa referencia
+    const nvInt = parseInt(String(nv).trim(), 10);
+    if (Number.isFinite(nvInt)) {
+      await ensureSaleOrderNvField();
+      const existing = await odooExecuteKw(
+        'sale.order',
+        'search_read',
+        [[['x_porton_nv', '=', nvInt]]],
+        { fields: ['id', 'name', 'amount_total'], limit: 1, order: 'id desc' }
+      );
 
-// Idempotencia: si ya existe una cotización con este NV, devolvemos esa referencia
-const nvInt = parseInt(String(nv).trim(), 10);
-if (Number.isFinite(nvInt)) {
-  await ensureSaleOrderNvField();
-  const existing = await odooExecuteKw(
-    'sale.order',
-    'search_read',
-    [[['x_porton_nv', '=', nvInt]]],
-    { fields: ['id', 'name', 'amount_total'], limit: 1, order: 'id desc' }
-  );
-
-  if (existing && existing.length) {
-    return res.json({
-      already_sent: true,
-      order_id: existing[0].id,
-      name: existing[0].name,
-      amount_total: existing[0].amount_total,
-    });
-  }
-}
+      if (existing && existing.length) {
+        return res.json({
+          already_sent: true,
+          order_id: existing[0].id,
+          name: existing[0].name,
+          amount_total: existing[0].amount_total,
+        });
+      }
+    }
 
     // No dependemos de idpedido: generamos la cotización con la clave natural
     // (tipo, sucursal, numero, deposito) y trazabilidad por NV.
@@ -1554,24 +1560,23 @@ app.get('/api/portones', requireAuth, attachRole, async (req, res) => {
       .map((r) => (r?.NV !== null && r?.NV !== undefined ? String(r.NV).trim() : ''))
       .filter((v) => v !== '');
 
+    let sentSet = new Set();
+    let pendingFilterOk = true;
 
-let sentSet = new Set();
-let pendingFilterOk = true;
+    try {
+      sentSet = await getAlreadySentNvSet(nvList);
+    } catch (odooErr) {
+      pendingFilterOk = false;
+      console.error('No se pudo filtrar pendientes contra Odoo:', odooErr?.message || odooErr);
+    }
 
-try {
-  sentSet = await getAlreadySentNvSet(nvList);
-} catch (odooErr) {
-  pendingFilterOk = false;
-  console.error('No se pudo filtrar pendientes contra Odoo:', odooErr?.message || odooErr);
-}
-
-const pending = pendingFilterOk
-  ? (rows || []).filter((r) => {
-      const nvVal = r?.NV !== null && r?.NV !== undefined ? String(r.NV).trim() : '';
-      if (!nvVal) return false;
-      return !sentSet.has(nvVal);
-    })
-  : (rows || []);
+    const pending = pendingFilterOk
+      ? (rows || []).filter((r) => {
+          const nvVal = r?.NV !== null && r?.NV !== undefined ? String(r.NV).trim() : '';
+          if (!nvVal) return false;
+          return !sentSet.has(nvVal);
+        })
+      : (rows || []);
 
     const mapped = pending.map(mapPortonListRow);
 
@@ -1588,7 +1593,6 @@ const pending = pendingFilterOk
     });
   }
 });
-
 
 // ---------------------
 // API Pre_Produccion (privada)
@@ -1665,6 +1669,53 @@ app.post('/api/formulas', requireAuth, attachRole, requireRole(['admin', 'formul
     });
   }
 });
+
+// ---------------------
+// API Mappings de medición (privada)
+// ---------------------
+app.get('/api/measurement-source-catalog', requireAuth, attachRole, async (_req, res) => {
+  try {
+    return res.json({ sections: listMeasurementSourceCatalog() });
+  } catch (err) {
+    console.error('Error en /api/measurement-source-catalog:', err);
+    return res.status(500).json({
+      error: 'Error obteniendo catálogo de medición',
+      details: err.message || String(err),
+    });
+  }
+});
+
+app.get('/api/property-mappings', requireAuth, attachRole, async (_req, res) => {
+  try {
+    const mappings = await listMeasurementPropertyMappings(supabasePool);
+    return res.json({ mappings });
+  } catch (err) {
+    console.error('Error en /api/property-mappings (GET):', err);
+    return res.status(500).json({
+      error: 'Error obteniendo mappings',
+      details: err.message || String(err),
+    });
+  }
+});
+
+app.post(
+  '/api/property-mappings',
+  requireAuth,
+  attachRole,
+  requireRole(['admin', 'formula_editor']),
+  async (req, res) => {
+    try {
+      const mapping = await upsertMeasurementPropertyMapping(supabasePool, req.body || {});
+      return res.json({ mapping });
+    } catch (err) {
+      console.error('Error en /api/property-mappings (POST):', err);
+      return res.status(500).json({
+        error: 'Error guardando mapping',
+        details: err.message || String(err),
+      });
+    }
+  }
+);
 
 // ---------------------
 // Bulk Update (privado)
