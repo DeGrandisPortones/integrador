@@ -735,6 +735,34 @@ async function getPreProduccionValoresRows({ nv, partida, fecha_envio_produccion
   return merged;
 }
 
+async function getDistinctPropertyValues(property) {
+  if (!supabasePool) throw new Error('SUPABASE_DB_URL no está configurado');
+
+  const propertyName = String(property || '').trim();
+  if (!propertyName) throw new Error('Falta property');
+
+  const { rows } = await supabasePool.query(
+    `
+      SELECT value, COUNT(*)::int AS count
+      FROM (
+        SELECT BTRIM(e.value) AS value
+        FROM preproduccion_valores p
+        CROSS JOIN LATERAL jsonb_each_text(COALESCE(p.data, '{}'::jsonb)) AS e(key, value)
+        WHERE LOWER(BTRIM(e.key)) = LOWER(BTRIM($1))
+          AND NULLIF(BTRIM(e.value), '') IS NOT NULL
+      ) AS distinct_values
+      GROUP BY value
+      ORDER BY count DESC, value ASC
+    `,
+    [propertyName]
+  );
+
+  return (rows || []).map((row) => ({
+    value: row.value,
+    count: Number(row.count) || 0,
+  }));
+}
+
 // =====================
 // CLIENTE ODOO (JSON-RPC)
 // =====================
@@ -1633,6 +1661,28 @@ app.get('/api/pre-produccion-valores', requireAuth, attachRole, async (req, res)
     console.error('Error en /api/pre-produccion-valores:', err);
     return res.status(500).json({
       error: 'Error interno obteniendo Pre_Produccion (valores)',
+      details: err.message || String(err),
+    });
+  }
+});
+
+app.get('/api/property-value-options', requireAuth, attachRole, async (req, res) => {
+  const property = String(req.query?.property || '').trim();
+  if (!property) {
+    return res.status(400).json({ error: 'Falta property' });
+  }
+
+  try {
+    const values = await getDistinctPropertyValues(property);
+    return res.json({
+      property,
+      count: values.length,
+      values,
+    });
+  } catch (err) {
+    console.error('Error en /api/property-value-options:', err);
+    return res.status(500).json({
+      error: 'Error obteniendo valores de propiedad',
       details: err.message || String(err),
     });
   }

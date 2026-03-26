@@ -61,6 +61,20 @@ async function savePropertyMappingToBackend(payload, authHeader) {
   return res.json();
 }
 
+async function fetchPropertyValueOptions(property, authHeader) {
+  const params = new URLSearchParams();
+  params.set('property', property);
+
+  const res = await fetch(`${API_BASE_URL}/api/property-value-options?${params.toString()}`, {
+    headers: { ...(authHeader || {}) },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Error HTTP ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 function getResolverLabel(value) {
   const match = RESOLVER_OPTIONS.find((item) => item.value === value);
   return match?.label || value || 'Directo';
@@ -84,6 +98,12 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
   const [mappingLoading, setMappingLoading] = useState(false);
   const [mappingError, setMappingError] = useState('');
   const [savingMappingCol, setSavingMappingCol] = useState(null);
+
+  const [valueProperty, setValueProperty] = useState('');
+  const [valueOptions, setValueOptions] = useState([]);
+  const [valueSelected, setValueSelected] = useState('');
+  const [valueLoading, setValueLoading] = useState(false);
+  const [valueError, setValueError] = useState('');
 
   const targetProperties = useMemo(() => {
     const set = new Set([...(columns || [])]);
@@ -157,6 +177,53 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     });
     setMappingDrafts(next);
   }, [targetProperties, mappingRows]);
+
+  useEffect(() => {
+    if (!valueProperty) return;
+    if (targetProperties.includes(valueProperty)) return;
+    setValueProperty('');
+    setValueOptions([]);
+    setValueSelected('');
+    setValueError('');
+  }, [targetProperties, valueProperty]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPropertyValues() {
+      if (!valueProperty) {
+        setValueOptions([]);
+        setValueSelected('');
+        setValueError('');
+        return;
+      }
+
+      setValueLoading(true);
+      setValueError('');
+      try {
+        const data = await fetchPropertyValueOptions(valueProperty, authHeader);
+        if (cancelled) return;
+
+        const options = Array.isArray(data?.values) ? data.values : [];
+        setValueOptions(options);
+        setValueSelected((current) => (
+          options.some((item) => String(item?.value) === String(current)) ? current : ''
+        ));
+      } catch (err) {
+        console.error('Error cargando valores de propiedad:', err);
+        if (!cancelled) {
+          setValueOptions([]);
+          setValueSelected('');
+          setValueError(err.message || 'Error cargando valores de propiedad');
+        }
+      } finally {
+        if (!cancelled) setValueLoading(false);
+      }
+    }
+
+    loadPropertyValues();
+    return () => { cancelled = true; };
+  }, [authHeader, valueProperty]);
 
   async function handleLoadSampleRow(e) {
     e.preventDefault();
@@ -662,6 +729,76 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      <div className="formulas-panel">
+        <h2>Valores</h2>
+        <p className="hint">
+          Elegí una propiedad del integrador para ver qué valores distintos existen hoy en la base.
+        </p>
+
+        <div
+          className="field-row"
+          style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}
+        >
+          <label style={{ minWidth: 280 }}>
+            Propiedad
+            <br />
+            <select
+              value={valueProperty}
+              onChange={(e) => {
+                setValueProperty(e.target.value);
+                setValueSelected('');
+              }}
+            >
+              <option value="">Seleccionar…</option>
+              {targetProperties.map((property) => (
+                <option key={`value-property-${property}`} value={property}>
+                  {property}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ minWidth: 380 }}>
+            Valor
+            <br />
+            <select
+              value={valueSelected}
+              onChange={(e) => setValueSelected(e.target.value)}
+              disabled={!valueProperty || valueLoading || !valueOptions.length}
+            >
+              <option value="">
+                {!valueProperty
+                  ? 'Seleccionar propiedad…'
+                  : valueLoading
+                  ? 'Cargando…'
+                  : valueOptions.length
+                  ? 'Seleccionar…'
+                  : 'Sin valores disponibles'}
+              </option>
+              {valueOptions.map((item) => {
+                const optionValue = String(item?.value ?? '');
+                const count = Number(item?.count ?? 0);
+                return (
+                  <option key={`${valueProperty}-${optionValue}`} value={optionValue}>
+                    {count > 0 ? `${optionValue} (${count})` : optionValue}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+        </div>
+
+        {valueError && <div className="error">⚠ {valueError}</div>}
+
+        {valueProperty && !valueError && !valueLoading && (
+          <p className="hint">
+            {valueOptions.length
+              ? `Se encontraron ${valueOptions.length} valor(es) distintos para "${valueProperty}".`
+              : `No se encontraron valores cargados para "${valueProperty}".`}
+          </p>
         )}
       </div>
     </div>
