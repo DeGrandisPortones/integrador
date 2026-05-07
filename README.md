@@ -1,78 +1,128 @@
-# Patch integrador: sincronizacion ipanel
+# Patch integrador: sincronizacion y listado de Ipanels
 
-Este patch agrega la sincronizacion desde `Paneles.dbo.NTASVTAS` hacia `public.ipanel`.
+Este patch agrega el flujo de Ipanels al integrador:
 
-## Que agrega
+- Backend: sincroniza `Paneles.dbo.NTASVTAS` hacia `public.ipanel` en Supabase.
+- Frontend: agrega una nueva seccion `Ipanels` para listar registros y ejecutar la sincronizacion.
 
-- `GET /api/ipanel`: lista registros de Supabase `public.ipanel`.
-- `GET /api/ipanel/last-sync`: devuelve `max(updated_at)` de `public.ipanel`.
-- `POST /api/sync/ipanel`: trae datos desde SQL Server y los inserta/actualiza en `public.ipanel`.
+## Archivos incluidos
 
-## Mapeo usado
-
-Como el SELECT informado de `Paneles.dbo.NTASVTAS` no incluye una columna `partida`, el patch usa:
-
-- `partida = numero`
-- `nv = numero`
-- `fecha_nv = fecha`
-- `fecha_plan_entrega = fechaent`
-- `observaciones = observ + obs + oc + idpedido + datos del cliente/direccion`
-
-No se actualizan los estados de procesos ni sus timestamps (`guillotina`, `plegado`, `pintura`, `inyeccion`, `despacho`, `diseno`).
+```txt
+ipanel_integrador_patch/
+  dflex-sync-backend/
+    ipanelSyncModule.js
+    scripts/
+      patch_server_ipanel.js
+  dflex-sync-frontend/
+    src/pages/IpanelsPage.jsx
+    scripts/patch_app_ipanel.js
+  README.md
+```
 
 ## Instalacion
 
-Copiar la carpeta `dflex-sync-backend` del zip encima de la carpeta `dflex-sync-backend` del repo `integrador`.
+Copiar el contenido de este zip encima del repo `integrador`.
 
-Luego ejecutar desde `dflex-sync-backend`:
+Luego aplicar los patches:
 
 ```bash
+# Backend
+cd dflex-sync-backend
 node scripts/patch_server_ipanel.js
 node --check server.js
 node --check ipanelSyncModule.js
+
+# Frontend
+cd ../dflex-sync-frontend
+node scripts/patch_app_ipanel.js
 ```
 
-Despues reiniciar el servicio backend.
+Despues reiniciar backend y frontend.
 
-## Uso
+## Endpoints agregados
 
-Sincronizar todo el lote default, maximo 10000:
+### Listado
 
-```bash
-curl -X POST "$BACKEND_URL/api/sync/ipanel" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"limit":10000}'
+```http
+GET /api/ipanel
+GET /api/ipanel?partida=123
+GET /api/ipanel?nv=123
 ```
 
-Sincronizar una NV puntual:
+Devuelve registros desde `public.ipanel`.
 
-```bash
-curl -X POST "$BACKEND_URL/api/sync/ipanel" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"nv":1234}'
+### Ultima sincronizacion
+
+```http
+GET /api/ipanel/last-sync
 ```
 
-Listar:
+Devuelve `lastSyncAt` usando `max(updated_at)` de `public.ipanel`.
 
-```bash
-curl "$BACKEND_URL/api/ipanel" -H "Authorization: Bearer $TOKEN"
+### Sincronizacion
+
+```http
+POST /api/sync/ipanel
+Content-Type: application/json
+
+{
+  "limit": 10000
+}
 ```
 
-Ultima sincronizacion:
+Tambien acepta filtro puntual:
 
-```bash
-curl "$BACKEND_URL/api/ipanel/last-sync" -H "Authorization: Bearer $TOKEN"
+```json
+{
+  "partida": 123,
+  "nv": 123,
+  "limit": 10000
+}
 ```
+
+Requiere rol `admin`, igual que las acciones sensibles del integrador.
+
+## Nueva pantalla frontend
+
+Se agrega la seccion `Ipanels` al menu principal.
+
+Permite:
+
+- Buscar por `partida` / `NV`.
+- Ver fecha de ultima sincronizacion.
+- Sincronizar desde SQL Server hacia Supabase.
+- Ver listado con columnas principales:
+  - Partida
+  - NV
+  - Fecha NV
+  - Plan entrega
+  - Diseño
+  - Guillotina
+  - Plegado
+  - Pintura
+  - Inyección
+  - Despacho
+  - Observaciones
+
+## Mapeo SQL -> Supabase
+
+Como `Paneles.dbo.NTASVTAS` no trae una columna `partida` en el SELECT informado, se usa:
+
+```txt
+partida = numero
+nv = numero
+fecha_nv = fecha
+fecha_plan_entrega = fechaent
+observaciones = observ + obs + oc + idpedido + cliente/direccion
+```
+
+No se aplican formulas y no se modifican los estados productivos existentes.
 
 ## Recomendado en Supabase
 
-Para evitar duplicados por concurrencia, conviene agregar un indice unico por partida:
+Para evitar duplicados por concurrencia, crear un indice unico por partida:
 
 ```sql
 create unique index if not exists ipanel_partida_unique_idx
 on public.ipanel using btree (partida);
 ```
-
-El codigo no depende de ese indice porque hace upsert manual por `partida`, pero el indice unico deja la tabla protegida.
