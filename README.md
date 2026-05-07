@@ -1,17 +1,62 @@
-# Ipanels frontend - reemplazo directo
+# Ipanel backend - reemplazo directo
 
-Copiar estas carpetas encima del repo `integrador`, reemplazando archivos existentes cuando pregunte.
+Este zip agrega las rutas de backend que necesita la seccion **Ipanels** del frontend:
 
-Incluye:
+- `GET /api/ipanel`
+- `GET /api/ipanel/last-sync`
+- `POST /api/sync/ipanel`
 
-- `dflex-sync-frontend/src/App.jsx`: App completo con la nueva seccion `Ipanels` en el menu.
-- `dflex-sync-frontend/src/pages/IpanelsPage.jsx`: pagina nueva para listar/sincronizar ipanels.
+## Como aplicar
 
-Despues de copiar:
+Copiar el contenido del zip encima del repo y reemplazar archivos.
 
-```bash
-cd dflex-sync-frontend
-npm run build
+Archivos incluidos:
+
+```txt
+
+dflex-sync-backend/package.json
+dflex-sync-backend/registerIpanelRoutes.js
 ```
 
-Si el boton aparece pero la pagina tira HTTP 404, falta aplicar el backend de ipanel (`/api/ipanel`, `/api/ipanel/last-sync`, `/api/sync/ipanel`).
+Despues, en backend:
+
+```bash
+cd dflex-sync-backend
+npm install
+npm start
+```
+
+En desarrollo:
+
+```bash
+npm run dev
+```
+
+## Importante
+
+El error `Cannot GET /api/ipanel` significa que el frontend ya esta bien, pero el backend desplegado no tiene esa ruta.
+Despues de copiar estos archivos hay que redesplegar/reiniciar el backend.
+
+La sincronizacion lee desde:
+
+```sql
+Paneles.dbo.NTASVTAS
+```
+
+y escribe en:
+
+```sql
+public.ipanel
+```
+
+El mapeo usado es:
+
+```txt
+partida = numero
+nv = numero
+fecha_nv = fecha
+fecha_plan_entrega = fechaent
+observaciones = datos de cliente, direccion, observaciones, OC e idpedido
+```
+
+No pisa los estados de proceso ya existentes, solo actualiza datos administrativos (`nv`, fechas y observaciones).
