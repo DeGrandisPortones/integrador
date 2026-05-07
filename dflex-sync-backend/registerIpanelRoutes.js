@@ -118,21 +118,34 @@ function buildObservaciones(row) {
   return parts.join('\n') || null;
 }
 
-function mapSqlRowToIpanel(row) {
+function mapSqlRowToPreproduccionValoresIpanel(row) {
   const partida = toIntOrNull(row.numero);
   if (!partida) return null;
+
+  const fechaNv = toDateOnlyOrNull(row.fecha);
+  const fechaPlanEntrega = toDateOnlyOrNull(row.fechaent);
+  const observaciones = buildObservaciones(row);
 
   return {
     partida,
     nv: partida,
-    fecha_nv: toDateOnlyOrNull(row.fecha),
-    fecha_plan_entrega: toDateOnlyOrNull(row.fechaent),
-    observaciones: buildObservaciones(row),
+    fecha_nv: fechaNv,
+    fecha_plan_entrega: fechaPlanEntrega,
+    data: {
+      ...row,
+      source: 'SQL',
+      origen: 'Paneles.dbo.NTASVTAS',
+      partida,
+      nv: partida,
+      fecha_nv: fechaNv,
+      fecha_plan_entrega: fechaPlanEntrega,
+      observaciones,
+    },
   };
 }
 
 function decorateSqlIpanelRow(row) {
-  const mapped = mapSqlRowToIpanel(row) || {};
+  const mapped = mapSqlRowToPreproduccionValoresIpanel(row) || {};
   return {
     ...row,
     source: 'SQL',
@@ -198,11 +211,11 @@ async function fetchSqlIpanelRows({ partida, nv, limit } = {}) {
   return result.recordset || [];
 }
 
-async function upsertIpanelRow(pgPool, mapped) {
+async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
   const existing = await pgPool.query(
     `
       SELECT id
-      FROM public.ipanel
+      FROM public.preproduccion_valores_ipanels
       WHERE partida = $1
       ORDER BY id ASC
       LIMIT 1
@@ -213,12 +226,12 @@ async function upsertIpanelRow(pgPool, mapped) {
   if (existing.rows.length) {
     await pgPool.query(
       `
-        UPDATE public.ipanel
+        UPDATE public.preproduccion_valores_ipanels
         SET
           nv = $2,
           fecha_nv = $3,
           fecha_plan_entrega = $4,
-          observaciones = $5,
+          data = $5::jsonb,
           updated_at = now()
         WHERE id = $1
       `,
@@ -227,7 +240,7 @@ async function upsertIpanelRow(pgPool, mapped) {
         mapped.nv,
         mapped.fecha_nv,
         mapped.fecha_plan_entrega,
-        mapped.observaciones,
+        JSON.stringify(mapped.data || {}),
       ]
     );
     return 'updated';
@@ -235,15 +248,15 @@ async function upsertIpanelRow(pgPool, mapped) {
 
   await pgPool.query(
     `
-      INSERT INTO public.ipanel (
+      INSERT INTO public.preproduccion_valores_ipanels (
         partida,
         nv,
         fecha_nv,
         fecha_plan_entrega,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5)
+        data
+      ) VALUES ($1, $2, $3, $4, $5::jsonb)
     `,
-    [mapped.partida, mapped.nv, mapped.fecha_nv, mapped.fecha_plan_entrega, mapped.observaciones]
+    [mapped.partida, mapped.nv, mapped.fecha_nv, mapped.fecha_plan_entrega, JSON.stringify(mapped.data || {})]
   );
   return 'inserted';
 }
@@ -259,13 +272,13 @@ async function syncIpanels({ partida, nv, limit } = {}) {
 
   for (const row of sqlRows) {
     try {
-      const mapped = mapSqlRowToIpanel(row);
+      const mapped = mapSqlRowToPreproduccionValoresIpanel(row);
       if (!mapped) {
         skipped += 1;
         continue;
       }
 
-      const result = await upsertIpanelRow(pgPool, mapped);
+      const result = await upsertPreproduccionValoresIpanelRow(pgPool, mapped);
       if (result === 'inserted') inserted += 1;
       else if (result === 'updated') updated += 1;
     } catch (err) {
@@ -287,7 +300,7 @@ async function syncIpanels({ partida, nv, limit } = {}) {
 
 async function getLastIpanelSync() {
   const pgPool = getIpanelPgPool();
-  const { rows } = await pgPool.query('SELECT MAX(updated_at) AS last_sync_at FROM public.ipanel');
+  const { rows } = await pgPool.query('SELECT MAX(updated_at) AS last_sync_at FROM public.preproduccion_valores_ipanels');
   return rows?.[0]?.last_sync_at || null;
 }
 
@@ -296,7 +309,7 @@ function registerIpanelRoutes(app) {
   app.__ipanelRoutesRegistered = true;
 
   // IMPORTANTE: esta ruta muestra lo que viene directo desde SQL Server.
-  // No lista Supabase. Supabase solo se usa para guardar/sincronizar.
+  // No lista Supabase. Supabase solo se usa para guardar/sincronizar en preproduccion_valores_ipanels.
   app.get('/api/ipanel', async (req, res) => {
     try {
       const rawRows = await fetchSqlIpanelRows({
@@ -352,7 +365,7 @@ function registerIpanelRoutes(app) {
     }
   });
 
-  console.log('[ipanel] Rutas registradas: GET /api/ipanel(SQL), GET /api/ipanel/sql, GET /api/ipanel/last-sync, POST /api/sync/ipanel');
+  console.log('[ipanel] Rutas registradas: GET /api/ipanel(SQL), GET /api/ipanel/sql, GET /api/ipanel/last-sync, POST /api/sync/ipanel -> preproduccion_valores_ipanels');
 }
 
 function patchExpress() {

@@ -1,25 +1,34 @@
-# Ipanels - reemplazo directo SQL -> Supabase
+# Ipanels -> preproduccion_valores_ipanels
 
-Este zip es para copiar encima del repo `integrador` y reemplazar archivos directamente.
+Este zip reemplaza la sincronización de ipanels para que deje de escribir en `public.ipanel` y empiece a escribir en:
 
-Incluye:
+```sql
+public.preproduccion_valores_ipanels
+```
 
-- `dflex-sync-backend/package.json`
-- `dflex-sync-backend/registerIpanelRoutes.js`
-- `dflex-sync-frontend/src/App.jsx`
-- `dflex-sync-frontend/src/pages/IpanelsPage.jsx`
+La pantalla del integrador sigue mostrando la data directa desde SQL Server (`Paneles.dbo.NTASVTAS`). Supabase queda como destino de sincronización.
 
-## Cambios
+## Archivos incluidos
 
-- La seccion `Ipanels` del front muestra la data directa desde SQL Server (`Paneles.dbo.NTASVTAS`).
-- `GET /api/ipanel` ahora devuelve filas desde SQL, no desde Supabase.
-- `POST /api/sync/ipanel` sincroniza SQL -> Supabase (`public.ipanel`).
-- Al entrar al integrador, `App.jsx` dispara una sincronizacion automatica SQL -> Supabase.
-- En la pantalla `Ipanels` sigue existiendo el boton manual `Sincronizar ipanels`.
+```txt
+dflex-sync-backend/package.json
+dflex-sync-backend/registerIpanelRoutes.js
+dflex-sync-backend/sql/create_preproduccion_valores_ipanels.sql
+```
 
-## Comandos recomendados
+## 1. Crear tabla en Supabase
 
-Backend:
+Ejecutar en Supabase SQL Editor:
+
+```sql
+-- contenido de dflex-sync-backend/sql/create_preproduccion_valores_ipanels.sql
+```
+
+## 2. Copiar archivos
+
+Copiar el contenido del zip encima del repo y reemplazar archivos.
+
+## 3. Reiniciar backend
 
 ```bash
 cd dflex-sync-backend
@@ -27,17 +36,21 @@ npm install
 npm start
 ```
 
-Frontend:
-
-```bash
-cd dflex-sync-frontend
-npm install
-npm run build
-```
-
 ## Endpoints
 
-- `GET /api/ipanel` listado directo desde SQL.
-- `GET /api/ipanel/sql` alias del listado directo desde SQL.
-- `GET /api/ipanel/last-sync` ultima actualizacion registrada en Supabase.
-- `POST /api/sync/ipanel` sincroniza desde SQL hacia Supabase.
+```txt
+GET  /api/ipanel              -> muestra data directa desde SQL Server
+GET  /api/ipanel/sql          -> alias directo SQL
+GET  /api/ipanel/last-sync    -> lee MAX(updated_at) de preproduccion_valores_ipanels
+POST /api/sync/ipanel         -> sincroniza SQL -> preproduccion_valores_ipanels
+```
+
+## Mapeo
+
+```txt
+partida = SQL.numero
+nv = SQL.numero
+fecha_nv = SQL.fecha
+fecha_plan_entrega = SQL.fechaent
+data = fila completa de Paneles.dbo.NTASVTAS + campos normalizados
+```
