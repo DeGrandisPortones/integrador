@@ -348,6 +348,8 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
       {syncResult && (
         <div className="info" style={{ marginTop: 8 }}>
           Sync finalizada: filas SQL {syncResult.totalSqlRows ?? 0}, importados {syncResult.imported ?? 0}, nuevos {syncResult.inserted ?? 0}, actualizados {syncResult.updated ?? 0}, omitidos {syncResult.skipped ?? 0}
+          {syncResult.skippedBlocked ? `, bloqueados ${syncResult.skippedBlocked}` : ''}
+          {syncResult.deletedBlocked ? `, eliminados bloqueados existentes ${syncResult.deletedBlocked}` : ''}
           {Array.isArray(syncResult.errors) && syncResult.errors.length ? `, errores ${syncResult.errors.length}` : ''}.
         </div>
       )}
@@ -365,6 +367,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
               <th>Deposito</th>
               <th>Producto / descripcion</th>
               <th>DescripcionSimple</th>
+              <th>Bloqueado sync</th>
               <th>Cliente</th>
               <th>Nombre</th>
               <th>Direccion</th>
@@ -396,6 +399,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                   <td>{toStr(r?.deposito)}</td>
                   <td title={productoDescripcion} style={{ minWidth: 260, maxWidth: 520, whiteSpace: 'pre-wrap' }}>{productoDescripcion}</td>
                   <td><SimpleBadge value={descripcionSimple} /></td>
+                  <td>{r?.bloqueado_preproduccion ? <span style={{ color: '#991b1b', fontWeight: 900 }}>Sí</span> : ''}</td>
                   <td>{toStr(r?.cliente)}</td>
                   <td>{toStr(r?.nombre)}</td>
                   <td>{toStr(r?.direccion)}</td>
@@ -415,7 +419,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
             })}
             {!loading && (!rows || !rows.length) && (
               <tr>
-                <td colSpan={21} style={{ padding: 16, textAlign: 'center', opacity: 0.8 }}>No hay ipanels para mostrar desde SQL.</td>
+                <td colSpan={22} style={{ padding: 16, textAlign: 'center', opacity: 0.8 }}>No hay ipanels para mostrar desde SQL.</td>
               </tr>
             )}
           </tbody>

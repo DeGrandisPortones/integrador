@@ -57,6 +57,33 @@ function autoDescripcionSimple(descripcion) {
   return null;
 }
 
+
+const DEFAULT_BLOCKED_IPANEL_PARTIDAS = new Set([
+  100000, 100001, 100002, 100003, 100004, 100005, 100006, 100007, 100008, 100009,
+  100010, 100011, 100012, 100013, 100014, 100015, 100016, 100017, 100018, 100019,
+  100020, 100021, 100022, 100023, 100024, 100025, 100026, 100027, 100028,
+  100034, 100037, 100038, 100039, 100041, 100042, 100043, 100044, 100046,
+  100047, 100048, 100045, 100049, 100050, 100051, 100052, 100053, 100054,
+  100055, 100056, 100057, 100058, 100059, 100060, 100061, 100062, 100063,
+  100064, 100065, 100067, 100066, 100069, 100068, 100070, 100071, 100072,
+  100073, 100074, 100075, 100076, 100077, 100078, 100079, 100080, 100081,
+  100082, 100085, 100087,
+]);
+
+function parseBlockedPartidasEnv() {
+  const raw = toStr(process.env.IPANEL_BLOCKED_PARTIDAS);
+  if (!raw) return [];
+  return raw
+    .split(/[\s,;|]+/)
+    .map((v) => toIntOrNull(v))
+    .filter((v) => Number.isInteger(v));
+}
+
+function isBlockedIpanelPartida(partida, blockedSet) {
+  const n = toIntOrNull(partida);
+  return Number.isInteger(n) && blockedSet && blockedSet.has(n);
+}
+
 function buildSqlConfig() {
   const sqlServerRaw = process.env.SQL_SERVER || 'localhost';
   let sqlHost = sqlServerRaw;
@@ -141,6 +168,14 @@ async function ensureDescripcionSimpleSchema(pgPool = getIpanelPgPool()) {
       on public.ipanel using btree (descripcion_simple);
   `);
 
+  await pgPool.query(`
+    create table if not exists public.ipanel_sync_blocklist (
+      partida integer primary key,
+      motivo text null,
+      created_at timestamp with time zone not null default now()
+    );
+  `);
+
   ensuredDescripcionSimpleSchema = true;
 }
 
@@ -212,6 +247,37 @@ async function getDescripcionSimpleMappingMap(pgPool = getIpanelPgPool()) {
     if (k) map.set(k, normalizeSimpleValue(r.descripcion_simple));
   }
   return map;
+}
+
+
+async function getBlockedIpanelPartidas(pgPool = getIpanelPgPool()) {
+  await ensureDescripcionSimpleSchema(pgPool);
+
+  const blocked = new Set(DEFAULT_BLOCKED_IPANEL_PARTIDAS);
+  for (const n of parseBlockedPartidasEnv()) blocked.add(n);
+
+  try {
+    const { rows } = await pgPool.query(`select partida from public.ipanel_sync_blocklist;`);
+    for (const r of rows || []) {
+      const n = toIntOrNull(r.partida);
+      if (Number.isInteger(n)) blocked.add(n);
+    }
+  } catch (err) {
+    console.warn('[ipanel] No se pudo leer ipanel_sync_blocklist; uso lista hardcodeada/env:', err?.message || err);
+  }
+
+  return blocked;
+}
+
+async function deleteBlockedIpanelPreproduccionRows(pgPool, blockedSet) {
+  const arr = Array.from(blockedSet || []).filter((n) => Number.isInteger(n));
+  if (!arr.length) return 0;
+
+  const { rowCount } = await pgPool.query(
+    `delete from public.preproduccion_valores_ipanels where partida = any($1::int[])`,
+    [arr]
+  );
+  return rowCount || 0;
 }
 
 function mapSqlRowToPreproduccionValoresIpanel(row, mappingMap = new Map()) {
@@ -510,11 +576,14 @@ async function syncIpanels({ partida, nv, limit } = {}) {
   const pgPool = getIpanelPgPool();
   await ensureDescripcionSimpleSchema(pgPool);
   const mappingMap = await getDescripcionSimpleMappingMap(pgPool);
+  const blockedSet = await getBlockedIpanelPartidas(pgPool);
+  const deletedBlocked = await deleteBlockedIpanelPreproduccionRows(pgPool, blockedSet);
   const sqlRows = await fetchSqlIpanelRows({ partida, nv, limit });
 
   let inserted = 0;
   let updated = 0;
   let skipped = 0;
+  let skippedBlocked = 0;
   const errors = [];
 
   for (const row of sqlRows) {
@@ -522,6 +591,12 @@ async function syncIpanels({ partida, nv, limit } = {}) {
       const mapped = mapSqlRowToPreproduccionValoresIpanel(row, mappingMap);
       if (!mapped) {
         skipped += 1;
+        continue;
+      }
+
+      if (isBlockedIpanelPartida(mapped.partida, blockedSet)) {
+        skipped += 1;
+        skippedBlocked += 1;
         continue;
       }
 
@@ -540,6 +615,8 @@ async function syncIpanels({ partida, nv, limit } = {}) {
     inserted,
     updated,
     skipped,
+    skippedBlocked,
+    deletedBlocked,
     totalSqlRows: sqlRows.length,
     errors,
   };
@@ -560,12 +637,19 @@ function registerIpanelRoutes(app) {
     try {
       const pgPool = getIpanelPgPool();
       const mappingMap = await getDescripcionSimpleMappingMap(pgPool);
+      const blockedSet = await getBlockedIpanelPartidas(pgPool);
       const rawRows = await fetchSqlIpanelRows({
         partida: req.query.partida,
         nv: req.query.nv,
         limit: req.query.limit,
       });
-      const rows = rawRows.map((r) => decorateSqlIpanelRow(r, mappingMap));
+      const rows = rawRows.map((r) => {
+        const decorated = decorateSqlIpanelRow(r, mappingMap);
+        return {
+          ...decorated,
+          bloqueado_preproduccion: isBlockedIpanelPartida(decorated.partida ?? decorated.numero, blockedSet),
+        };
+      });
       return res.json({ source: 'SQL', rows });
     } catch (err) {
       console.error('[ipanel] Error leyendo desde SQL:', err);
@@ -577,12 +661,19 @@ function registerIpanelRoutes(app) {
     try {
       const pgPool = getIpanelPgPool();
       const mappingMap = await getDescripcionSimpleMappingMap(pgPool);
+      const blockedSet = await getBlockedIpanelPartidas(pgPool);
       const rawRows = await fetchSqlIpanelRows({
         partida: req.query.partida,
         nv: req.query.nv,
         limit: req.query.limit,
       });
-      const rows = rawRows.map((r) => decorateSqlIpanelRow(r, mappingMap));
+      const rows = rawRows.map((r) => {
+        const decorated = decorateSqlIpanelRow(r, mappingMap);
+        return {
+          ...decorated,
+          bloqueado_preproduccion: isBlockedIpanelPartida(decorated.partida ?? decorated.numero, blockedSet),
+        };
+      });
       return res.json({ source: 'SQL', rows });
     } catch (err) {
       console.error('[ipanel] Error leyendo desde SQL:', err);
@@ -636,6 +727,29 @@ function registerIpanelRoutes(app) {
     }
   });
 
+  app.get('/api/ipanel/blocklist', async (_req, res) => {
+    try {
+      const pgPool = getIpanelPgPool();
+      const blockedSet = await getBlockedIpanelPartidas(pgPool);
+      return res.json({ rows: Array.from(blockedSet).sort((a, b) => a - b).map((partida) => ({ partida })) });
+    } catch (err) {
+      console.error('[ipanel] Error leyendo blocklist:', err);
+      return res.status(500).json({ error: 'Error leyendo blocklist ipanel', details: err?.message || String(err) });
+    }
+  });
+
+  app.post('/api/ipanel/blocklist/cleanup', async (_req, res) => {
+    try {
+      const pgPool = getIpanelPgPool();
+      const blockedSet = await getBlockedIpanelPartidas(pgPool);
+      const deletedBlocked = await deleteBlockedIpanelPreproduccionRows(pgPool, blockedSet);
+      return res.json({ ok: true, deletedBlocked });
+    } catch (err) {
+      console.error('[ipanel] Error limpiando blocklist:', err);
+      return res.status(500).json({ error: 'Error limpiando blocklist ipanel', details: err?.message || String(err) });
+    }
+  });
+
   app.get('/api/ipanel/last-sync', async (_req, res) => {
     try {
       const lastSyncAt = await getLastIpanelSync();
@@ -661,7 +775,7 @@ function registerIpanelRoutes(app) {
     }
   });
 
-  console.log('[ipanel] Rutas registradas: SQL + productos + DescripcionSimple + sync');
+  console.log('[ipanel] Rutas registradas: SQL + productos + DescripcionSimple + blocklist + sync');
 }
 
 function patchExpress() {
