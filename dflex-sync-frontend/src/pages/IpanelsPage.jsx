@@ -38,13 +38,19 @@ function formatDateTime(v) {
   });
 }
 
+function getProductoDescripcion(row) {
+  return toStr(row?.producto_descripcion ?? row?.producto_descripciones ?? row?.descripcion_producto);
+}
+
 function joinObs(row) {
   const parts = [];
   const observ = toStr(row?.observ);
   const obs = toStr(row?.obs);
   const oc = toStr(row?.oc);
   const idpedido = toStr(row?.idpedido);
+  const producto = getProductoDescripcion(row);
 
+  if (producto) parts.push(`Producto: ${producto}`);
   if (observ) parts.push(`Observ: ${observ}`);
   if (obs) parts.push(`Obs: ${obs}`);
   if (oc) parts.push(`OC: ${oc}`);
@@ -238,7 +244,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
       </div>
 
       <div className="info" style={{ marginTop: 8 }}>
-        Esta pantalla muestra la data cruda que viene de Paneles.dbo.NTASVTAS. Al entrar al integrador se sincroniza SQL -> Supabase automaticamente.
+        Esta pantalla muestra la data que viene de Paneles.dbo.NTASVTAS y suma la descripcion de PRODUCTOS vinculada por INTASVTAS.producto.
       </div>
 
       {!canSyncIpanel && (
@@ -266,6 +272,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
               <th>Sucursal</th>
               <th>Numero / Partida</th>
               <th>Deposito</th>
+              <th>Producto / descripcion</th>
               <th>Cliente</th>
               <th>Nombre</th>
               <th>Direccion</th>
@@ -290,6 +297,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                   ? `numero-${r.numero}-${idx}`
                   : `row-${idx}`;
               const obsText = joinObs(r) || toStr(r?.observaciones);
+              const productoDescripcion = getProductoDescripcion(r);
 
               return (
                 <tr key={key}>
@@ -298,6 +306,9 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                   <td>{toStr(r?.sucursal)}</td>
                   <td>{toStr(r?.numero ?? r?.partida)}</td>
                   <td>{toStr(r?.deposito)}</td>
+                  <td title={productoDescripcion} style={{ minWidth: 220, maxWidth: 420, whiteSpace: 'pre-wrap' }}>
+                    {productoDescripcion}
+                  </td>
                   <td>{toStr(r?.cliente)}</td>
                   <td>{toStr(r?.nombre)}</td>
                   <td>{toStr(r?.direccion)}</td>
@@ -320,7 +331,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
 
             {!loading && (!rows || !rows.length) && (
               <tr>
-                <td colSpan={19} style={{ padding: 16, textAlign: 'center', opacity: 0.8 }}>
+                <td colSpan={20} style={{ padding: 16, textAlign: 'center', opacity: 0.8 }}>
                   No hay ipanels para mostrar desde SQL.
                 </td>
               </tr>

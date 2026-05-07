@@ -101,6 +101,7 @@ function buildObservaciones(row) {
   const idpedido = toStr(row.idpedido);
   const vendedor = toStr(row.vendedor);
   const operador = toStr(row.operador);
+  const productoDescripcion = toStr(row.producto_descripcion || row.producto_descripciones || row.descripcion_producto);
 
   if (cliente || nombre) parts.push(`Cliente: ${[cliente, nombre].filter(Boolean).join(' - ')}`);
   if (direccion || localidad || provincia || cp) {
@@ -110,6 +111,7 @@ function buildObservaciones(row) {
   if (cuit) parts.push(`CUIT: ${cuit}`);
   if (vendedor) parts.push(`Vendedor: ${vendedor}`);
   if (operador) parts.push(`Operador: ${operador}`);
+  if (productoDescripcion) parts.push(`Producto: ${productoDescripcion}`);
   if (observ) parts.push(`Observ: ${observ}`);
   if (obs) parts.push(`Obs: ${obs}`);
   if (oc) parts.push(`OC: ${oc}`);
@@ -118,12 +120,18 @@ function buildObservaciones(row) {
   return parts.join('\n') || null;
 }
 
+function getProductoDescripcion(row) {
+  return toStr(row.producto_descripcion || row.producto_descripciones || row.descripcion_producto) || null;
+}
+
 function mapSqlRowToPreproduccionValoresIpanel(row) {
   const partida = toIntOrNull(row.numero);
   if (!partida) return null;
 
   const fechaNv = toDateOnlyOrNull(row.fecha);
   const fechaPlanEntrega = toDateOnlyOrNull(row.fechaent);
+  const productoDescripcion = getProductoDescripcion(row);
+  const productoCodigos = toStr(row.producto_codigos) || null;
   const observaciones = buildObservaciones(row);
 
   return {
@@ -139,6 +147,10 @@ function mapSqlRowToPreproduccionValoresIpanel(row) {
       nv: partida,
       fecha_nv: fechaNv,
       fecha_plan_entrega: fechaPlanEntrega,
+      producto_codigos: productoCodigos,
+      producto_descripcion: productoDescripcion,
+      producto_descripciones: productoDescripcion,
+      descripcion_producto: productoDescripcion,
       observaciones,
     },
   };
@@ -146,6 +158,8 @@ function mapSqlRowToPreproduccionValoresIpanel(row) {
 
 function decorateSqlIpanelRow(row) {
   const mapped = mapSqlRowToPreproduccionValoresIpanel(row) || {};
+  const productoDescripcion = getProductoDescripcion(row);
+
   return {
     ...row,
     source: 'SQL',
@@ -153,6 +167,10 @@ function decorateSqlIpanelRow(row) {
     nv: mapped.nv ?? toIntOrNull(row.numero),
     fecha_nv: mapped.fecha_nv ?? toDateOnlyOrNull(row.fecha),
     fecha_plan_entrega: mapped.fecha_plan_entrega ?? toDateOnlyOrNull(row.fechaent),
+    producto_codigos: toStr(row.producto_codigos) || null,
+    producto_descripcion: productoDescripcion,
+    producto_descripciones: productoDescripcion,
+    descripcion_producto: productoDescripcion,
     observaciones: mapped.observaciones ?? buildObservaciones(row),
   };
 }
@@ -169,43 +187,65 @@ async function fetchSqlIpanelRows({ partida, nv, limit } = {}) {
   if (filterValue) {
     request.input('numeroStr', sql.VarChar, filterValue);
     where = `
-      WHERE LTRIM(RTRIM(CAST(numero AS varchar(50)))) = @numeroStr
+      WHERE LTRIM(RTRIM(CAST(h.numero AS varchar(50)))) = @numeroStr
     `;
   }
 
   const result = await request.query(`
     SELECT TOP (@limit)
-      fecha,
-      tipo,
-      sucursal,
-      numero,
-      deposito,
-      cliente,
-      nombre,
-      direccion,
-      localidad,
-      cp,
-      provincia,
-      fpago,
-      vendedor,
-      operador,
-      zona,
-      iva,
-      cuit,
-      ibrutos,
-      observ,
-      retrep,
-      fechaent,
-      dirent,
-      obs,
-      oc,
-      idpedido,
-      condicion,
-      factura,
-      remito
-    FROM Paneles.dbo.NTASVTAS
+      h.fecha,
+      h.tipo,
+      h.sucursal,
+      h.numero,
+      h.deposito,
+      h.cliente,
+      h.nombre,
+      h.direccion,
+      h.localidad,
+      h.cp,
+      h.provincia,
+      h.fpago,
+      h.vendedor,
+      h.operador,
+      h.zona,
+      h.iva,
+      h.cuit,
+      h.ibrutos,
+      h.observ,
+      h.retrep,
+      h.fechaent,
+      h.dirent,
+      h.obs,
+      h.oc,
+      h.idpedido,
+      h.condicion,
+      h.factura,
+      h.remito,
+      STUFF((
+        SELECT DISTINCT ', ' + LTRIM(RTRIM(CAST(l.producto AS varchar(100))))
+        FROM Paneles.dbo.INTASVTAS AS l
+        WHERE LTRIM(RTRIM(CAST(l.numero AS varchar(50)))) = LTRIM(RTRIM(CAST(h.numero AS varchar(50))))
+          AND (h.tipo IS NULL OR l.tipo = h.tipo)
+          AND (h.sucursal IS NULL OR l.sucursal = h.sucursal)
+          AND (h.deposito IS NULL OR l.deposito = h.deposito)
+          AND l.producto IS NOT NULL
+        FOR XML PATH(''), TYPE
+      ).value('.', 'nvarchar(max)'), 1, 2, '') AS producto_codigos,
+      STUFF((
+        SELECT DISTINCT ' | ' + LTRIM(RTRIM(COALESCE(p.descripcion, '')))
+        FROM Paneles.dbo.INTASVTAS AS l
+        LEFT JOIN Paneles.dbo.PRODUCTOS AS p
+          ON LTRIM(RTRIM(CAST(p.codigo AS varchar(100)))) = LTRIM(RTRIM(CAST(l.producto AS varchar(100))))
+        WHERE LTRIM(RTRIM(CAST(l.numero AS varchar(50)))) = LTRIM(RTRIM(CAST(h.numero AS varchar(50))))
+          AND (h.tipo IS NULL OR l.tipo = h.tipo)
+          AND (h.sucursal IS NULL OR l.sucursal = h.sucursal)
+          AND (h.deposito IS NULL OR l.deposito = h.deposito)
+          AND NULLIF(LTRIM(RTRIM(COALESCE(p.descripcion, ''))), '') IS NOT NULL
+        FOR XML PATH(''), TYPE
+      ).value('.', 'nvarchar(max)'), 1, 3, '') AS producto_descripcion
+    FROM Paneles.dbo.NTASVTAS AS h
     ${where}
-    ORDER BY fecha DESC, numero DESC
+    ORDER BY h.fecha DESC, h.numero DESC
   `);
 
   return result.recordset || [];
@@ -214,7 +254,7 @@ async function fetchSqlIpanelRows({ partida, nv, limit } = {}) {
 async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
   const existing = await pgPool.query(
     `
-      SELECT id
+      SELECT id, data
       FROM public.preproduccion_valores_ipanels
       WHERE partida = $1
       ORDER BY id ASC
@@ -224,6 +264,12 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
   );
 
   if (existing.rows.length) {
+    const existingData = existing.rows[0]?.data && typeof existing.rows[0].data === 'object' ? existing.rows[0].data : {};
+    const mergedData = {
+      ...existingData,
+      ...(mapped.data || {}),
+    };
+
     await pgPool.query(
       `
         UPDATE public.preproduccion_valores_ipanels
@@ -240,7 +286,7 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
         mapped.nv,
         mapped.fecha_nv,
         mapped.fecha_plan_entrega,
-        JSON.stringify(mapped.data || {}),
+        JSON.stringify(mergedData),
       ]
     );
     return 'updated';
@@ -365,7 +411,7 @@ function registerIpanelRoutes(app) {
     }
   });
 
-  console.log('[ipanel] Rutas registradas: GET /api/ipanel(SQL), GET /api/ipanel/sql, GET /api/ipanel/last-sync, POST /api/sync/ipanel -> preproduccion_valores_ipanels');
+  console.log('[ipanel] Rutas registradas: GET /api/ipanel(SQL + productos), GET /api/ipanel/sql, GET /api/ipanel/last-sync, POST /api/sync/ipanel -> preproduccion_valores_ipanels');
 }
 
 function patchExpress() {
