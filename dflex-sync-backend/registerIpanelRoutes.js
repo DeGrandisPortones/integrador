@@ -39,6 +39,24 @@ function toDateOnlyOrNull(value) {
   return parsed.toISOString().slice(0, 10);
 }
 
+function normalizeSimpleValue(value) {
+  const raw = toStr(value).toUpperCase();
+  if (!raw) return null;
+  if (raw.includes('MADERA')) return 'MADERA';
+  if (raw.includes('ALUMINIO')) return 'ALUMINIO';
+  if (raw.includes('PINTURA')) return 'PINTURA';
+  if (raw.includes('OTRO')) return 'OTRO';
+  return raw;
+}
+
+function autoDescripcionSimple(descripcion) {
+  const d = toStr(descripcion).toUpperCase();
+  if (!d) return null;
+  if (d.includes('MADERA')) return 'MADERA';
+  if (d.includes('ALUMINIO')) return 'ALUMINIO';
+  return null;
+}
+
 function buildSqlConfig() {
   const sqlServerRaw = process.env.SQL_SERVER || 'localhost';
   let sqlHost = sqlServerRaw;
@@ -85,6 +103,47 @@ function getIpanelPgPool() {
   return ipanelPgPool;
 }
 
+let ensuredDescripcionSimpleSchema = false;
+async function ensureDescripcionSimpleSchema(pgPool = getIpanelPgPool()) {
+  if (ensuredDescripcionSimpleSchema) return;
+
+  await pgPool.query(`
+    create table if not exists public.ipanel_descripcion_simple_mappings (
+      descripcion text primary key,
+      descripcion_simple text null,
+      created_at timestamp with time zone not null default now(),
+      updated_at timestamp with time zone not null default now()
+    );
+  `);
+
+  await pgPool.query(`
+    alter table public.preproduccion_valores_ipanels
+      add column if not exists descripcion_simple text;
+  `);
+
+  await pgPool.query(`
+    alter table public.ipanel
+      add column if not exists descripcion_simple text;
+  `);
+
+  await pgPool.query(`
+    create index if not exists ipanel_descripcion_simple_mappings_value_idx
+      on public.ipanel_descripcion_simple_mappings using btree (descripcion_simple);
+  `);
+
+  await pgPool.query(`
+    create index if not exists preproduccion_valores_ipanels_descripcion_simple_idx
+      on public.preproduccion_valores_ipanels using btree (descripcion_simple);
+  `);
+
+  await pgPool.query(`
+    create index if not exists ipanel_descripcion_simple_idx
+      on public.ipanel using btree (descripcion_simple);
+  `);
+
+  ensuredDescripcionSimpleSchema = true;
+}
+
 function buildObservaciones(row) {
   const parts = [];
 
@@ -101,7 +160,7 @@ function buildObservaciones(row) {
   const idpedido = toStr(row.idpedido);
   const vendedor = toStr(row.vendedor);
   const operador = toStr(row.operador);
-  const productoDescripcion = toStr(row.producto_descripcion || row.producto_descripciones || row.descripcion_producto);
+  const productoDescripcion = getProductoDescripcion(row);
 
   if (cliente || nombre) parts.push(`Cliente: ${[cliente, nombre].filter(Boolean).join(' - ')}`);
   if (direccion || localidad || provincia || cp) {
@@ -121,16 +180,48 @@ function buildObservaciones(row) {
 }
 
 function getProductoDescripcion(row) {
-  return toStr(row.producto_descripcion || row.producto_descripciones || row.descripcion_producto) || null;
+  return toStr(row.producto_descripcion || row.producto_descripciones || row.descripcion_producto || row.descripcion) || null;
 }
 
-function mapSqlRowToPreproduccionValoresIpanel(row) {
+function getMappingKey(descripcion) {
+  return toStr(descripcion);
+}
+
+function resolveDescripcionSimple(descripcion, mappingMap) {
+  const key = getMappingKey(descripcion);
+  if (!key) return null;
+
+  const mapped = mappingMap && mappingMap.get(key);
+  const mappedNorm = normalizeSimpleValue(mapped);
+  if (mappedNorm) return mappedNorm;
+
+  return autoDescripcionSimple(key);
+}
+
+async function getDescripcionSimpleMappingMap(pgPool = getIpanelPgPool()) {
+  await ensureDescripcionSimpleSchema(pgPool);
+  const { rows } = await pgPool.query(`
+    select descripcion, descripcion_simple
+    from public.ipanel_descripcion_simple_mappings
+    order by descripcion asc;
+  `);
+
+  const map = new Map();
+  for (const r of rows || []) {
+    const k = getMappingKey(r.descripcion);
+    if (k) map.set(k, normalizeSimpleValue(r.descripcion_simple));
+  }
+  return map;
+}
+
+function mapSqlRowToPreproduccionValoresIpanel(row, mappingMap = new Map()) {
   const partida = toIntOrNull(row.numero);
   if (!partida) return null;
 
   const fechaNv = toDateOnlyOrNull(row.fecha);
   const fechaPlanEntrega = toDateOnlyOrNull(row.fechaent);
   const productoDescripcion = getProductoDescripcion(row);
+  const descripcionSimple = resolveDescripcionSimple(productoDescripcion, mappingMap);
   const productoCodigos = toStr(row.producto_codigos) || null;
   const observaciones = buildObservaciones(row);
 
@@ -139,6 +230,8 @@ function mapSqlRowToPreproduccionValoresIpanel(row) {
     nv: partida,
     fecha_nv: fechaNv,
     fecha_plan_entrega: fechaPlanEntrega,
+    descripcion: productoDescripcion,
+    descripcion_simple: descripcionSimple,
     data: {
       ...row,
       source: 'SQL',
@@ -152,14 +245,17 @@ function mapSqlRowToPreproduccionValoresIpanel(row) {
       producto_descripcion: productoDescripcion,
       producto_descripciones: productoDescripcion,
       descripcion_producto: productoDescripcion,
+      DescripcionSimple: descripcionSimple,
+      descripcion_simple: descripcionSimple,
       observaciones,
     },
   };
 }
 
-function decorateSqlIpanelRow(row) {
-  const mapped = mapSqlRowToPreproduccionValoresIpanel(row) || {};
+function decorateSqlIpanelRow(row, mappingMap = new Map()) {
+  const mapped = mapSqlRowToPreproduccionValoresIpanel(row, mappingMap) || {};
   const productoDescripcion = getProductoDescripcion(row);
+  const descripcionSimple = mapped.descripcion_simple ?? resolveDescripcionSimple(productoDescripcion, mappingMap);
 
   return {
     ...row,
@@ -173,6 +269,8 @@ function decorateSqlIpanelRow(row) {
     producto_descripcion: productoDescripcion,
     producto_descripciones: productoDescripcion,
     descripcion_producto: productoDescripcion,
+    DescripcionSimple: descripcionSimple,
+    descripcion_simple: descripcionSimple,
     observaciones: mapped.observaciones ?? buildObservaciones(row),
   };
 }
@@ -253,7 +351,85 @@ async function fetchSqlIpanelRows({ partida, nv, limit } = {}) {
   return result.recordset || [];
 }
 
+async function getDescripcionSimpleCatalog({ limit } = {}) {
+  const pgPool = getIpanelPgPool();
+  const mappingMap = await getDescripcionSimpleMappingMap(pgPool);
+  const sqlRows = await fetchSqlIpanelRows({ limit: limit || 10000 });
+  const counts = new Map();
+
+  for (const row of sqlRows) {
+    const desc = getProductoDescripcion(row);
+    if (!desc) continue;
+    counts.set(desc, (counts.get(desc) || 0) + 1);
+  }
+
+  const rows = Array.from(counts.entries())
+    .map(([descripcion, count]) => ({
+      descripcion,
+      count,
+      descripcion_simple: resolveDescripcionSimple(descripcion, mappingMap),
+      descripcion_simple_manual: mappingMap.get(descripcion) || null,
+    }))
+    .sort((a, b) => String(a.descripcion).localeCompare(String(b.descripcion), 'es'));
+
+  return rows;
+}
+
+async function upsertDescripcionSimpleMapping({ descripcion, descripcion_simple }) {
+  const pgPool = getIpanelPgPool();
+  await ensureDescripcionSimpleSchema(pgPool);
+  const desc = getMappingKey(descripcion);
+  if (!desc) throw new Error('descripcion es requerida');
+
+  const simple = normalizeSimpleValue(descripcion_simple);
+
+  if (!simple) {
+    await pgPool.query(`delete from public.ipanel_descripcion_simple_mappings where descripcion = $1`, [desc]);
+  } else {
+    await pgPool.query(
+      `
+        insert into public.ipanel_descripcion_simple_mappings (descripcion, descripcion_simple, updated_at)
+        values ($1, $2, now())
+        on conflict (descripcion)
+        do update set descripcion_simple = excluded.descripcion_simple, updated_at = now();
+      `,
+      [desc, simple]
+    );
+  }
+
+  // Recalcula filas ya sincronizadas con esa descripcion.
+  await pgPool.query(
+    `
+      update public.preproduccion_valores_ipanels
+      set descripcion_simple = $2,
+          data = jsonb_set(
+            jsonb_set(coalesce(data, '{}'::jsonb), '{DescripcionSimple}', to_jsonb($2::text), true),
+            '{descripcion_simple}', to_jsonb($2::text), true
+          ),
+          updated_at = now()
+      where coalesce(descripcion, data->>'descripcion', data->>'producto_descripcion', data->>'producto_descripciones', data->>'descripcion_producto') = $1;
+    `,
+    [desc, simple]
+  );
+
+  await pgPool.query(
+    `
+      update public.ipanel i
+      set descripcion_simple = $2,
+          updated_at = now()
+      from public.preproduccion_valores_ipanels p
+      where p.partida = i.partida
+        and coalesce(p.descripcion, p.data->>'descripcion', p.data->>'producto_descripcion', p.data->>'producto_descripciones', p.data->>'descripcion_producto') = $1;
+    `,
+    [desc, simple]
+  );
+
+  return { descripcion: desc, descripcion_simple: simple };
+}
+
 async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
+  await ensureDescripcionSimpleSchema(pgPool);
+
   const existing = await pgPool.query(
     `
       SELECT id, data
@@ -287,7 +463,8 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
           fecha_nv = $3,
           fecha_plan_entrega = coalesce(fecha_plan_entrega, $4),
           descripcion = $5,
-          data = $6::jsonb,
+          descripcion_simple = $6,
+          data = $7::jsonb,
           updated_at = now()
         WHERE id = $1
       `,
@@ -296,7 +473,8 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
         mapped.nv,
         mapped.fecha_nv,
         mapped.fecha_plan_entrega,
-        mapped.data?.descripcion || mapped.data?.producto_descripcion || null,
+        mapped.descripcion || mapped.data?.descripcion || mapped.data?.producto_descripcion || null,
+        mapped.descripcion_simple || mapped.data?.DescripcionSimple || null,
         JSON.stringify(mergedData),
       ]
     );
@@ -311,15 +489,17 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
         fecha_nv,
         fecha_plan_entrega,
         descripcion,
+        descripcion_simple,
         data
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
     `,
     [
       mapped.partida,
       mapped.nv,
       mapped.fecha_nv,
       mapped.fecha_plan_entrega,
-      mapped.data?.descripcion || mapped.data?.producto_descripcion || null,
+      mapped.descripcion || mapped.data?.descripcion || mapped.data?.producto_descripcion || null,
+      mapped.descripcion_simple || mapped.data?.DescripcionSimple || null,
       JSON.stringify(mapped.data || {}),
     ]
   );
@@ -328,6 +508,8 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
 
 async function syncIpanels({ partida, nv, limit } = {}) {
   const pgPool = getIpanelPgPool();
+  await ensureDescripcionSimpleSchema(pgPool);
+  const mappingMap = await getDescripcionSimpleMappingMap(pgPool);
   const sqlRows = await fetchSqlIpanelRows({ partida, nv, limit });
 
   let inserted = 0;
@@ -337,7 +519,7 @@ async function syncIpanels({ partida, nv, limit } = {}) {
 
   for (const row of sqlRows) {
     try {
-      const mapped = mapSqlRowToPreproduccionValoresIpanel(row);
+      const mapped = mapSqlRowToPreproduccionValoresIpanel(row, mappingMap);
       if (!mapped) {
         skipped += 1;
         continue;
@@ -365,6 +547,7 @@ async function syncIpanels({ partida, nv, limit } = {}) {
 
 async function getLastIpanelSync() {
   const pgPool = getIpanelPgPool();
+  await ensureDescripcionSimpleSchema(pgPool);
   const { rows } = await pgPool.query('SELECT MAX(updated_at) AS last_sync_at FROM public.preproduccion_valores_ipanels');
   return rows?.[0]?.last_sync_at || null;
 }
@@ -373,16 +556,16 @@ function registerIpanelRoutes(app) {
   if (!app || app.__ipanelRoutesRegistered) return;
   app.__ipanelRoutesRegistered = true;
 
-  // IMPORTANTE: esta ruta muestra lo que viene directo desde SQL Server.
-  // No lista Supabase. Supabase solo se usa para guardar/sincronizar en preproduccion_valores_ipanels.
   app.get('/api/ipanel', async (req, res) => {
     try {
+      const pgPool = getIpanelPgPool();
+      const mappingMap = await getDescripcionSimpleMappingMap(pgPool);
       const rawRows = await fetchSqlIpanelRows({
         partida: req.query.partida,
         nv: req.query.nv,
         limit: req.query.limit,
       });
-      const rows = rawRows.map(decorateSqlIpanelRow);
+      const rows = rawRows.map((r) => decorateSqlIpanelRow(r, mappingMap));
       return res.json({ source: 'SQL', rows });
     } catch (err) {
       console.error('[ipanel] Error leyendo desde SQL:', err);
@@ -392,16 +575,64 @@ function registerIpanelRoutes(app) {
 
   app.get('/api/ipanel/sql', async (req, res) => {
     try {
+      const pgPool = getIpanelPgPool();
+      const mappingMap = await getDescripcionSimpleMappingMap(pgPool);
       const rawRows = await fetchSqlIpanelRows({
         partida: req.query.partida,
         nv: req.query.nv,
         limit: req.query.limit,
       });
-      const rows = rawRows.map(decorateSqlIpanelRow);
+      const rows = rawRows.map((r) => decorateSqlIpanelRow(r, mappingMap));
       return res.json({ source: 'SQL', rows });
     } catch (err) {
       console.error('[ipanel] Error leyendo desde SQL:', err);
       return res.status(500).json({ error: 'Error leyendo ipanels desde SQL', details: err?.message || String(err) });
+    }
+  });
+
+  app.get('/api/ipanel/descripcion-simple/catalog', async (req, res) => {
+    try {
+      const rows = await getDescripcionSimpleCatalog({ limit: req.query.limit });
+      return res.json({ rows });
+    } catch (err) {
+      console.error('[ipanel] Error leyendo catalogo DescripcionSimple:', err);
+      return res.status(500).json({ error: 'Error leyendo catalogo DescripcionSimple', details: err?.message || String(err) });
+    }
+  });
+
+  app.get('/api/ipanel/descripcion-simple/mappings', async (_req, res) => {
+    try {
+      const pgPool = getIpanelPgPool();
+      await ensureDescripcionSimpleSchema(pgPool);
+      const { rows } = await pgPool.query(`
+        select descripcion, descripcion_simple, created_at, updated_at
+        from public.ipanel_descripcion_simple_mappings
+        order by descripcion asc;
+      `);
+      return res.json({ rows });
+    } catch (err) {
+      console.error('[ipanel] Error leyendo mappings DescripcionSimple:', err);
+      return res.status(500).json({ error: 'Error leyendo mappings DescripcionSimple', details: err?.message || String(err) });
+    }
+  });
+
+  app.put('/api/ipanel/descripcion-simple/mapping', async (req, res) => {
+    try {
+      const result = await upsertDescripcionSimpleMapping(req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ipanel] Error guardando mapping DescripcionSimple:', err);
+      return res.status(400).json({ error: 'Error guardando mapping DescripcionSimple', details: err?.message || String(err) });
+    }
+  });
+
+  app.post('/api/ipanel/descripcion-simple/mapping', async (req, res) => {
+    try {
+      const result = await upsertDescripcionSimpleMapping(req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ipanel] Error guardando mapping DescripcionSimple:', err);
+      return res.status(400).json({ error: 'Error guardando mapping DescripcionSimple', details: err?.message || String(err) });
     }
   });
 
@@ -430,7 +661,7 @@ function registerIpanelRoutes(app) {
     }
   });
 
-  console.log('[ipanel] Rutas registradas: GET /api/ipanel(SQL + productos), GET /api/ipanel/sql, GET /api/ipanel/last-sync, POST /api/sync/ipanel -> preproduccion_valores_ipanels');
+  console.log('[ipanel] Rutas registradas: SQL + productos + DescripcionSimple + sync');
 }
 
 function patchExpress() {
