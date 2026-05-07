@@ -148,6 +148,7 @@ function mapSqlRowToPreproduccionValoresIpanel(row) {
       fecha_nv: fechaNv,
       fecha_plan_entrega: fechaPlanEntrega,
       producto_codigos: productoCodigos,
+      descripcion: productoDescripcion,
       producto_descripcion: productoDescripcion,
       producto_descripciones: productoDescripcion,
       descripcion_producto: productoDescripcion,
@@ -168,6 +169,7 @@ function decorateSqlIpanelRow(row) {
     fecha_nv: mapped.fecha_nv ?? toDateOnlyOrNull(row.fecha),
     fecha_plan_entrega: mapped.fecha_plan_entrega ?? toDateOnlyOrNull(row.fechaent),
     producto_codigos: toStr(row.producto_codigos) || null,
+    descripcion: productoDescripcion,
     producto_descripcion: productoDescripcion,
     producto_descripciones: productoDescripcion,
     descripcion_producto: productoDescripcion,
@@ -270,14 +272,22 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
       ...(mapped.data || {}),
     };
 
+    // No pisar fechas/datos imputados por logística desde Planificación.
+    for (const key of ['fecha_prod', 'inicio_prod_imput', 'fecha_plan_entrega', 'fecha_salida_imput', 'produccion_enviada', 'produccion_enviada_at', 'ipanel_id']) {
+      if (existingData[key] !== undefined && existingData[key] !== null && String(existingData[key]).trim() !== '') {
+        mergedData[key] = existingData[key];
+      }
+    }
+
     await pgPool.query(
       `
         UPDATE public.preproduccion_valores_ipanels
         SET
           nv = $2,
           fecha_nv = $3,
-          fecha_plan_entrega = $4,
-          data = $5::jsonb,
+          fecha_plan_entrega = coalesce(fecha_plan_entrega, $4),
+          descripcion = $5,
+          data = $6::jsonb,
           updated_at = now()
         WHERE id = $1
       `,
@@ -286,6 +296,7 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
         mapped.nv,
         mapped.fecha_nv,
         mapped.fecha_plan_entrega,
+        mapped.data?.descripcion || mapped.data?.producto_descripcion || null,
         JSON.stringify(mergedData),
       ]
     );
@@ -299,10 +310,18 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
         nv,
         fecha_nv,
         fecha_plan_entrega,
+        descripcion,
         data
-      ) VALUES ($1, $2, $3, $4, $5::jsonb)
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
     `,
-    [mapped.partida, mapped.nv, mapped.fecha_nv, mapped.fecha_plan_entrega, JSON.stringify(mapped.data || {})]
+    [
+      mapped.partida,
+      mapped.nv,
+      mapped.fecha_nv,
+      mapped.fecha_plan_entrega,
+      mapped.data?.descripcion || mapped.data?.producto_descripcion || null,
+      JSON.stringify(mapped.data || {}),
+    ]
   );
   return 'inserted';
 }
