@@ -38,16 +38,19 @@ function formatDateTime(v) {
   });
 }
 
-function statusClass(value) {
-  const v = toStr(value).toLowerCase();
-  if (v === 'finalizado') return 'chip chip-ok';
-  if (v === 'en proceso') return 'chip chip-warn';
-  return 'chip';
-}
+function joinObs(row) {
+  const parts = [];
+  const observ = toStr(row?.observ);
+  const obs = toStr(row?.obs);
+  const oc = toStr(row?.oc);
+  const idpedido = toStr(row?.idpedido);
 
-function StatusChip({ value }) {
-  const label = toStr(value) || 'Pendiente';
-  return <span className={statusClass(label)}>{label}</span>;
+  if (observ) parts.push(`Observ: ${observ}`);
+  if (obs) parts.push(`Obs: ${obs}`);
+  if (oc) parts.push(`OC: ${oc}`);
+  if (idpedido) parts.push(`ID pedido: ${idpedido}`);
+
+  return parts.join('\n');
 }
 
 export default function IpanelsPage({ authHeader, canSyncIpanel }) {
@@ -67,8 +70,6 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
 
     const f = toStr(extra.filter ?? filter);
     if (f) {
-      // El backend acepta ambas claves; como para ipanel usamos numero -> partida/nv,
-      // mandamos las dos para que el filtro funcione sin obligar al usuario a distinguir.
       params.set('partida', f);
       params.set('nv', f);
     }
@@ -87,7 +88,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
     }
   }
 
-  async function loadIpanels(nextFilter = filter) {
+  async function loadIpanelsFromSql(nextFilter = filter) {
     try {
       setLoading(true);
       setError('');
@@ -105,35 +106,27 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
       await loadLastSync();
     } catch (e) {
       console.error(e);
-      setError(e.message || 'Error cargando ipanels');
+      setError(e.message || 'Error cargando ipanels desde SQL');
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    loadIpanels('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  async function syncIpanels({ ask = true, nextFilter = filter } = {}) {
+    const f = toStr(nextFilter);
 
-  async function handleSearch(e) {
-    e.preventDefault();
-    await loadIpanels(filter.trim());
-  }
-
-  async function handleSync() {
-    if (!canSyncIpanel) {
+    if (ask && !canSyncIpanel) {
       window.alert('No tenes permisos para sincronizar ipanels (solo admin).');
-      return;
+      return null;
     }
 
-    const f = toStr(filter);
-    const msg = f
-      ? `Sincronizar ipanel ${f} desde SQL Server hacia Supabase?`
-      : 'Sincronizar ipanels desde SQL Server hacia Supabase?';
-
-    const ok = window.confirm(msg);
-    if (!ok) return;
+    if (ask) {
+      const msg = f
+        ? `Sincronizar ipanel ${f} desde SQL Server hacia Supabase?`
+        : 'Sincronizar ipanels desde SQL Server hacia Supabase?';
+      const ok = window.confirm(msg);
+      if (!ok) return null;
+    }
 
     try {
       setSyncing(true);
@@ -169,13 +162,31 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
       }
 
       setSyncResult(payload || {});
-      await loadIpanels(f);
+      await loadLastSync();
+      return payload || {};
     } catch (e) {
       console.error(e);
       setError(e.message || 'Error sincronizando ipanels');
+      return null;
     } finally {
       setSyncing(false);
     }
+  }
+
+  useEffect(() => {
+    loadIpanelsFromSql('');
+    // La sincronizacion automatica global se dispara desde App.jsx al entrar al integrador.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSearch(e) {
+    e.preventDefault();
+    await loadIpanelsFromSql(filter.trim());
+  }
+
+  async function handleSync() {
+    const result = await syncIpanels({ ask: true, nextFilter: filter });
+    if (result) await loadIpanelsFromSql(filter.trim());
   }
 
   return (
@@ -203,7 +214,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
             onClick={() => {
               setFilter('');
               setSyncResult(null);
-              loadIpanels('');
+              loadIpanelsFromSql('');
             }}
             disabled={loading || syncing}
           >
@@ -212,8 +223,10 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
         </form>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="info">Listado directo desde SQL Server</div>
+
           {lastSyncAt ? (
-            <div className="info">Ultima sync: {formatDateTime(lastSyncAt)}</div>
+            <div className="info">Ultima sync Supabase: {formatDateTime(lastSyncAt)}</div>
           ) : (
             <div className="info">Sin sync registrada</div>
           )}
@@ -224,16 +237,20 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
         </div>
       </div>
 
+      <div className="info" style={{ marginTop: 8 }}>
+        Esta pantalla muestra la data cruda que viene de Paneles.dbo.NTASVTAS. Al entrar al integrador se sincroniza SQL -> Supabase automaticamente.
+      </div>
+
       {!canSyncIpanel && (
         <div className="info" style={{ marginTop: 8 }}>
-          Nota: solo admin puede sincronizar ipanels desde SQL Server.
+          Nota: solo admin puede lanzar la sincronizacion manual.
         </div>
       )}
 
       {syncResult && (
         <div className="info" style={{ marginTop: 8 }}>
-          Sync finalizada: importados {syncResult.imported ?? 0}, nuevos {syncResult.inserted ?? 0}, actualizados{' '}
-          {syncResult.updated ?? 0}, omitidos {syncResult.skipped ?? 0}
+          Sync finalizada: filas SQL {syncResult.totalSqlRows ?? 0}, importados {syncResult.imported ?? 0}, nuevos{' '}
+          {syncResult.inserted ?? 0}, actualizados {syncResult.updated ?? 0}, omitidos {syncResult.skipped ?? 0}
           {Array.isArray(syncResult.errors) && syncResult.errors.length ? `, errores ${syncResult.errors.length}` : ''}.
         </div>
       )}
@@ -244,37 +261,58 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Partida</th>
-              <th>NV</th>
-              <th>Fecha NV</th>
-              <th>Plan entrega</th>
-              <th>Diseño</th>
-              <th>Guillotina</th>
-              <th>Plegado</th>
-              <th>Pintura</th>
-              <th>Inyección</th>
-              <th>Despacho</th>
-              <th>Observaciones</th>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th>Sucursal</th>
+              <th>Numero / Partida</th>
+              <th>Deposito</th>
+              <th>Cliente</th>
+              <th>Nombre</th>
+              <th>Direccion</th>
+              <th>Localidad</th>
+              <th>Provincia</th>
+              <th>Fecha entrega</th>
+              <th>Forma pago</th>
+              <th>Vendedor</th>
+              <th>Operador</th>
+              <th>OC</th>
+              <th>ID pedido</th>
+              <th>Factura</th>
+              <th>Remito</th>
+              <th>Observaciones SQL</th>
             </tr>
           </thead>
           <tbody>
             {(rows || []).map((r, idx) => {
-              const key = r?.id ? `id-${r.id}` : r?.partida ? `partida-${r.partida}` : `row-${idx}`;
+              const key = r?.idpedido
+                ? `idpedido-${r.idpedido}`
+                : r?.numero
+                  ? `numero-${r.numero}-${idx}`
+                  : `row-${idx}`;
+              const obsText = joinObs(r) || toStr(r?.observaciones);
 
               return (
                 <tr key={key}>
-                  <td>{toStr(r?.partida)}</td>
-                  <td>{toStr(r?.nv)}</td>
-                  <td>{formatDate(r?.fecha_nv)}</td>
-                  <td>{formatDate(r?.fecha_plan_entrega)}</td>
-                  <td><StatusChip value={r?.diseno} /></td>
-                  <td><StatusChip value={r?.guillotina} /></td>
-                  <td><StatusChip value={r?.plegado} /></td>
-                  <td><StatusChip value={r?.pintura} /></td>
-                  <td><StatusChip value={r?.inyeccion} /></td>
-                  <td><StatusChip value={r?.despacho} /></td>
-                  <td title={toStr(r?.observaciones)} style={{ maxWidth: 360, whiteSpace: 'pre-wrap' }}>
-                    {toStr(r?.observaciones)}
+                  <td>{formatDate(r?.fecha)}</td>
+                  <td>{toStr(r?.tipo)}</td>
+                  <td>{toStr(r?.sucursal)}</td>
+                  <td>{toStr(r?.numero ?? r?.partida)}</td>
+                  <td>{toStr(r?.deposito)}</td>
+                  <td>{toStr(r?.cliente)}</td>
+                  <td>{toStr(r?.nombre)}</td>
+                  <td>{toStr(r?.direccion)}</td>
+                  <td>{toStr(r?.localidad)}</td>
+                  <td>{toStr(r?.provincia)}</td>
+                  <td>{formatDate(r?.fechaent ?? r?.fecha_plan_entrega)}</td>
+                  <td>{toStr(r?.fpago)}</td>
+                  <td>{toStr(r?.vendedor)}</td>
+                  <td>{toStr(r?.operador)}</td>
+                  <td>{toStr(r?.oc)}</td>
+                  <td>{toStr(r?.idpedido)}</td>
+                  <td>{toStr(r?.factura)}</td>
+                  <td>{toStr(r?.remito)}</td>
+                  <td title={obsText} style={{ minWidth: 260, maxWidth: 420, whiteSpace: 'pre-wrap' }}>
+                    {obsText}
                   </td>
                 </tr>
               );
@@ -282,27 +320,14 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
 
             {!loading && (!rows || !rows.length) && (
               <tr>
-                <td colSpan={11} style={{ padding: 16, textAlign: 'center', opacity: 0.8 }}>
-                  No hay ipanels para mostrar.
+                <td colSpan={19} style={{ padding: 16, textAlign: 'center', opacity: 0.8 }}>
+                  No hay ipanels para mostrar desde SQL.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-
-      <style>{`
-        .chip{
-          display:inline-block;
-          padding:2px 8px;
-          border-radius:999px;
-          font-size:12px;
-          border:1px solid rgba(255,255,255,0.18);
-          white-space:nowrap;
-        }
-        .chip-ok{ }
-        .chip-warn{ }
-      `}</style>
     </div>
   );
 }

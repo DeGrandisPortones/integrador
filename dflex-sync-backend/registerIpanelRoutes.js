@@ -8,8 +8,6 @@ const Module = require('module');
 const sql = require('mssql');
 const { Pool } = require('pg');
 
-const IPANEL_STATUS_VALUES = new Set(['Pendiente', 'En Proceso', 'Finalizado']);
-
 function toStr(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -39,11 +37,6 @@ function toDateOnlyOrNull(value) {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toISOString().slice(0, 10);
-}
-
-function normalizeStatus(value) {
-  const raw = toStr(value);
-  return IPANEL_STATUS_VALUES.has(raw) ? raw : 'Pendiente';
 }
 
 function buildSqlConfig() {
@@ -135,6 +128,19 @@ function mapSqlRowToIpanel(row) {
     fecha_nv: toDateOnlyOrNull(row.fecha),
     fecha_plan_entrega: toDateOnlyOrNull(row.fechaent),
     observaciones: buildObservaciones(row),
+  };
+}
+
+function decorateSqlIpanelRow(row) {
+  const mapped = mapSqlRowToIpanel(row) || {};
+  return {
+    ...row,
+    source: 'SQL',
+    partida: mapped.partida ?? toIntOrNull(row.numero),
+    nv: mapped.nv ?? toIntOrNull(row.numero),
+    fecha_nv: mapped.fecha_nv ?? toDateOnlyOrNull(row.fecha),
+    fecha_plan_entrega: mapped.fecha_plan_entrega ?? toDateOnlyOrNull(row.fechaent),
+    observaciones: mapped.observaciones ?? buildObservaciones(row),
   };
 }
 
@@ -269,76 +275,14 @@ async function syncIpanels({ partida, nv, limit } = {}) {
 
   return {
     ok: errors.length === 0,
+    source: 'SQL',
     imported: inserted + updated,
     inserted,
     updated,
     skipped,
+    totalSqlRows: sqlRows.length,
     errors,
   };
-}
-
-async function listIpanels({ partida, nv, limit } = {}) {
-  const pgPool = getIpanelPgPool();
-  const params = [];
-  const where = [];
-
-  const filterValue = toIntOrNull(partida || nv);
-  if (filterValue) {
-    params.push(filterValue);
-    where.push(`(partida = $${params.length} OR nv = $${params.length})`);
-  }
-
-  const limitValue = Math.max(1, Math.min(toIntOrNull(limit) || 1000, 5000));
-  params.push(limitValue);
-
-  const sqlText = `
-    SELECT
-      id,
-      partida,
-      created_at,
-      updated_at,
-      guillotina,
-      guillotina_inicio,
-      guillotina_fin,
-      plegado,
-      plegado_inicio,
-      plegado_fin,
-      pintura,
-      pintura_inicio,
-      pintura_fin,
-      inyeccion,
-      inyeccion_inicio,
-      inyeccion_fin,
-      nv,
-      despacho,
-      despacho_inicio,
-      despacho_fin,
-      fecha_plan,
-      diseno,
-      diseno_inicio,
-      diseno_fin,
-      fecha_nv,
-      fecha_plan_entrega,
-      observaciones,
-      fecha_med,
-      fecha_prod
-    FROM public.ipanel
-    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-    ORDER BY COALESCE(fecha_nv, created_at::date) DESC, partida DESC
-    LIMIT $${params.length}
-  `;
-
-  const { rows } = await pgPool.query(sqlText, params);
-
-  return (rows || []).map((row) => ({
-    ...row,
-    guillotina: normalizeStatus(row.guillotina),
-    plegado: normalizeStatus(row.plegado),
-    pintura: normalizeStatus(row.pintura),
-    inyeccion: normalizeStatus(row.inyeccion),
-    despacho: normalizeStatus(row.despacho),
-    diseno: normalizeStatus(row.diseno),
-  }));
 }
 
 async function getLastIpanelSync() {
@@ -351,17 +295,35 @@ function registerIpanelRoutes(app) {
   if (!app || app.__ipanelRoutesRegistered) return;
   app.__ipanelRoutesRegistered = true;
 
+  // IMPORTANTE: esta ruta muestra lo que viene directo desde SQL Server.
+  // No lista Supabase. Supabase solo se usa para guardar/sincronizar.
   app.get('/api/ipanel', async (req, res) => {
     try {
-      const rows = await listIpanels({
+      const rawRows = await fetchSqlIpanelRows({
         partida: req.query.partida,
         nv: req.query.nv,
         limit: req.query.limit,
       });
-      return res.json({ rows });
+      const rows = rawRows.map(decorateSqlIpanelRow);
+      return res.json({ source: 'SQL', rows });
     } catch (err) {
-      console.error('[ipanel] Error listando:', err);
-      return res.status(500).json({ error: 'Error listando ipanels', details: err?.message || String(err) });
+      console.error('[ipanel] Error leyendo desde SQL:', err);
+      return res.status(500).json({ error: 'Error leyendo ipanels desde SQL', details: err?.message || String(err) });
+    }
+  });
+
+  app.get('/api/ipanel/sql', async (req, res) => {
+    try {
+      const rawRows = await fetchSqlIpanelRows({
+        partida: req.query.partida,
+        nv: req.query.nv,
+        limit: req.query.limit,
+      });
+      const rows = rawRows.map(decorateSqlIpanelRow);
+      return res.json({ source: 'SQL', rows });
+    } catch (err) {
+      console.error('[ipanel] Error leyendo desde SQL:', err);
+      return res.status(500).json({ error: 'Error leyendo ipanels desde SQL', details: err?.message || String(err) });
     }
   });
 
@@ -390,7 +352,7 @@ function registerIpanelRoutes(app) {
     }
   });
 
-  console.log('[ipanel] Rutas registradas: GET /api/ipanel, GET /api/ipanel/last-sync, POST /api/sync/ipanel');
+  console.log('[ipanel] Rutas registradas: GET /api/ipanel(SQL), GET /api/ipanel/sql, GET /api/ipanel/last-sync, POST /api/sync/ipanel');
 }
 
 function patchExpress() {

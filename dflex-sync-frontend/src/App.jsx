@@ -93,6 +93,29 @@ async function fetchFormulasFromBackend(accessToken) {
   return res.json();
 }
 
+
+async function syncIpanelsOnEntry(accessToken) {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    };
+
+    const res = await fetch(`${API_BASE_URL}/api/sync/ipanel`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ limit: 10000 }),
+    });
+
+    if (!res.ok && res.status !== 207) {
+      const txt = await res.text();
+      console.warn('[ipanel] No se pudo sincronizar al entrar:', res.status, txt);
+    }
+  } catch (e) {
+    console.warn('[ipanel] No se pudo sincronizar al entrar:', e?.message || e);
+  }
+}
+
 async function saveFormulaToBackend(columnName, expression, accessToken) {
   const res = await fetch(`${API_BASE_URL}/api/formulas`, {
     method: 'POST',
@@ -217,6 +240,9 @@ function MainApp({ session, signOut, role }) {
   useEffect(() => {
     loadData();
     loadFormulas();
+    // Sincroniza ipanels desde SQL Server hacia Supabase cada vez que se entra al integrador.
+    // La pantalla Ipanels igualmente muestra la data directa desde SQL.
+    syncIpanelsOnEntry(accessToken);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 

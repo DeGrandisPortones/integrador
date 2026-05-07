@@ -1,24 +1,25 @@
-# Ipanel backend - reemplazo directo
+# Ipanels - reemplazo directo SQL -> Supabase
 
-Este zip agrega las rutas de backend que necesita la seccion **Ipanels** del frontend:
+Este zip es para copiar encima del repo `integrador` y reemplazar archivos directamente.
 
-- `GET /api/ipanel`
-- `GET /api/ipanel/last-sync`
-- `POST /api/sync/ipanel`
+Incluye:
 
-## Como aplicar
+- `dflex-sync-backend/package.json`
+- `dflex-sync-backend/registerIpanelRoutes.js`
+- `dflex-sync-frontend/src/App.jsx`
+- `dflex-sync-frontend/src/pages/IpanelsPage.jsx`
 
-Copiar el contenido del zip encima del repo y reemplazar archivos.
+## Cambios
 
-Archivos incluidos:
+- La seccion `Ipanels` del front muestra la data directa desde SQL Server (`Paneles.dbo.NTASVTAS`).
+- `GET /api/ipanel` ahora devuelve filas desde SQL, no desde Supabase.
+- `POST /api/sync/ipanel` sincroniza SQL -> Supabase (`public.ipanel`).
+- Al entrar al integrador, `App.jsx` dispara una sincronizacion automatica SQL -> Supabase.
+- En la pantalla `Ipanels` sigue existiendo el boton manual `Sincronizar ipanels`.
 
-```txt
+## Comandos recomendados
 
-dflex-sync-backend/package.json
-dflex-sync-backend/registerIpanelRoutes.js
-```
-
-Despues, en backend:
+Backend:
 
 ```bash
 cd dflex-sync-backend
@@ -26,37 +27,17 @@ npm install
 npm start
 ```
 
-En desarrollo:
+Frontend:
 
 ```bash
-npm run dev
+cd dflex-sync-frontend
+npm install
+npm run build
 ```
 
-## Importante
+## Endpoints
 
-El error `Cannot GET /api/ipanel` significa que el frontend ya esta bien, pero el backend desplegado no tiene esa ruta.
-Despues de copiar estos archivos hay que redesplegar/reiniciar el backend.
-
-La sincronizacion lee desde:
-
-```sql
-Paneles.dbo.NTASVTAS
-```
-
-y escribe en:
-
-```sql
-public.ipanel
-```
-
-El mapeo usado es:
-
-```txt
-partida = numero
-nv = numero
-fecha_nv = fecha
-fecha_plan_entrega = fechaent
-observaciones = datos de cliente, direccion, observaciones, OC e idpedido
-```
-
-No pisa los estados de proceso ya existentes, solo actualiza datos administrativos (`nv`, fechas y observaciones).
+- `GET /api/ipanel` listado directo desde SQL.
+- `GET /api/ipanel/sql` alias del listado directo desde SQL.
+- `GET /api/ipanel/last-sync` ultima actualizacion registrada en Supabase.
+- `POST /api/sync/ipanel` sincroniza desde SQL hacia Supabase.
