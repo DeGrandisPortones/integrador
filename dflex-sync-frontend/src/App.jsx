@@ -4,6 +4,7 @@ import TablePage from './pages/TablePage';
 import FormulasPage from './pages/FormulasPage';
 import ImportPage from './pages/ImportPage';
 import PortonesPage from './pages/PortonesPage';
+import IpanelsPage from './pages/IpanelsPage';
 import ViewPdf from './pages/ViewPdf';
 import PdfLinkView from './pages/PdfLinkView';
 import LoginPage from './pages/LoginPage.jsx';
@@ -49,7 +50,6 @@ function isPdfLinkMode() {
     (qs.get('inicio_prod_imput') || '').trim().length > 0 ||
     (qs.get('fecha') || '').trim().length > 0 ||
     (qs.get('fecha_envio_produccion') || '').trim().length > 0;
-
 
   // Para arm-primario requerimos NV
   if (tipo === 'arm-primario') {
@@ -130,7 +130,6 @@ function AuthGate() {
     );
   }
 
-  // ✅ CLAVE DEL DELAY VISUAL:
   // Si Supabase ya dio sesión pero todavía estamos dentro del "postLoginDelay",
   // mantenemos el LoginPage en modo "success" (inputs verdes) y bloqueado.
   if (session && postLoginDelay) {
@@ -147,13 +146,18 @@ function AuthGate() {
 function MainApp({ session, signOut, role }) {
   const accessToken = session?.access_token || null;
 
-  // ✅ authHeader (para componentes que lo usan directamente)
+  // authHeader (para componentes que lo usan directamente)
   const authHeader = useMemo(() => {
     return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
   }, [accessToken]);
 
-  // ✅ permissions calculadas desde role
+  // permissions calculadas desde role
   const canSyncOdoo = useMemo(() => {
+    const r = String(role || 'viewer').trim().toLowerCase();
+    return r === 'admin';
+  }, [role]);
+
+  const canSyncIpanel = useMemo(() => {
     const r = String(role || 'viewer').trim().toLowerCase();
     return r === 'admin';
   }, [role]);
@@ -209,7 +213,7 @@ function MainApp({ session, signOut, role }) {
     }
   }, [visibleColumns]);
 
-  // ✅ al montar (ya hay sesión garantizada)
+  // al montar (ya hay sesión garantizada)
   useEffect(() => {
     loadData();
     loadFormulas();
@@ -264,7 +268,7 @@ function MainApp({ session, signOut, role }) {
     Object.keys(formulas || {}).forEach((k) => set.add(k));
     ['lado_mas_alto', 'calc_espada'].forEach((k) => set.add(k));
 
-    // ✅ Columnas "solo app" (persisten en preproduccion_valores.data)
+    // Columnas "solo app" (persisten en preproduccion_valores.data)
     ['Descripcion', 'Observaciones'].forEach((k) => set.add(k));
 
     return Array.from(set);
@@ -494,7 +498,7 @@ function MainApp({ session, signOut, role }) {
             >
               Importar Excel
             </button>
-          
+
             <button
               type="button"
               className={currentPage === 'portones' ? 'nav-btn active' : 'nav-btn'}
@@ -502,7 +506,15 @@ function MainApp({ session, signOut, role }) {
             >
               Portones (Enviar a Odoo)
             </button>
-</nav>
+
+            <button
+              type="button"
+              className={currentPage === 'ipanels' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentPage('ipanels')}
+            >
+              Ipanels
+            </button>
+          </nav>
 
           <button type="button" className="btn-secondary" onClick={() => signOut()}>
             Cerrar sesión
@@ -574,12 +586,14 @@ function MainApp({ session, signOut, role }) {
 
       {currentPage === 'import' && <ImportPage rows={rows} columns={allColumns} authHeader={authHeader} />}
 
-
       {currentPage === 'pdf' && <ViewPdf />}
-
 
       {currentPage === 'portones' && (
         <PortonesPage authHeader={authHeader} canSyncOdoo={canSyncOdoo} />
+      )}
+
+      {currentPage === 'ipanels' && (
+        <IpanelsPage authHeader={authHeader} canSyncIpanel={canSyncIpanel} />
       )}
     </div>
   );
