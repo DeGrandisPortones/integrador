@@ -195,11 +195,26 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
 
   const productionSourceProperties = useMemo(() => {
     const byKey = new Map();
+    const productionSection = (mappingCatalog || []).find((section) => section?.section_key === PRODUCTION_SOURCE_SECTION);
+    const catalogFields = Array.isArray(productionSection?.fields) ? productionSection.fields : [];
 
-    (PRODUCTION_SOURCE_PROPERTIES || []).forEach((item) => {
-      const key = String(item?.source_key || '').trim();
-      if (key) byKey.set(key, item);
+    catalogFields.forEach((field) => {
+      const key = String(field?.source_key || field?.path || '').trim();
+      if (!key) return;
+      byKey.set(key, {
+        source_key: key,
+        label: field?.label || key,
+        group: field?.group || productionSection?.section_label || 'Nota de venta',
+        description: field?.description || '',
+      });
     });
+
+    if (!byKey.size) {
+      (PRODUCTION_SOURCE_PROPERTIES || []).forEach((item) => {
+        const key = String(item?.source_key || '').trim();
+        if (key) byKey.set(key, item);
+      });
+    }
 
     (mappingRows || []).forEach((row) => {
       if (!isProductionMapping(row)) return;
@@ -207,17 +222,22 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       if (!key || byKey.has(key)) return;
       byKey.set(key, {
         source_key: key,
-        label: key,
-        group: 'Nota de venta',
-        description: 'Campo ya asignado desde Nota de venta.',
+        label: row?.source_label || row?.label || key,
+        group: row?.source_group || (key.startsWith('section__') ? 'Secciones del presupuesto' : 'Nota de venta'),
+        description: row?.source_description || (key.startsWith('section__')
+          ? 'Item elegido en esta sección del presupuesto. Si la sección no participa en la NV, la propiedad asignada queda null.'
+          : 'Campo ya asignado desde Nota de venta.'),
       });
     });
 
-    return Array.from(byKey.values()).sort((a, b) =>
-      String(a.group || '').localeCompare(String(b.group || ''), 'es') ||
-      String(a.label || a.source_key || '').localeCompare(String(b.label || b.source_key || ''), 'es')
-    );
-  }, [mappingRows]);
+    return Array.from(byKey.values()).sort((a, b) => {
+      const aIsSection = String(a?.source_key || '').startsWith('section__') ? 0 : 1;
+      const bIsSection = String(b?.source_key || '').startsWith('section__') ? 0 : 1;
+      return aIsSection - bIsSection ||
+        String(a.group || '').localeCompare(String(b.group || ''), 'es') ||
+        String(a.label || a.source_key || '').localeCompare(String(b.label || b.source_key || ''), 'es');
+    });
+  }, [mappingCatalog, mappingRows]);
 
   const productionFilteredSourceProperties = useMemo(() => {
     const needle = String(productionSearch || '').trim().toLowerCase();
@@ -299,14 +319,14 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       };
     });
 
-    (PRODUCTION_SOURCE_PROPERTIES || []).forEach((item) => {
+    (productionSourceProperties || []).forEach((item) => {
       const sourceKey = String(item?.source_key || '').trim();
       if (!sourceKey || next[sourceKey]) return;
       next[sourceKey] = { target_property: '', is_active: true };
     });
 
     setProductionDrafts(next);
-  }, [mappingRows]);
+  }, [mappingRows, productionSourceProperties]);
 
   useEffect(() => {
     if (!valueProperty) return;
@@ -651,6 +671,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
 
     const draft = productionDrafts[key] || { target_property: '', is_active: true };
     const selectedTarget = String(draft.target_property || '').trim();
+    const sourceMeta = (productionSourceProperties || []).find((item) => String(item?.source_key || '') === key) || {};
 
     const ok = window.confirm(
       `¿Guardar asignación desde Nota de venta?\n\n` +
@@ -673,13 +694,18 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
         is_active: draft.is_active !== false,
       }, authHeader);
 
-      const savedRow = data?.mapping || {
-        source_key: key,
-        source_section: PRODUCTION_SOURCE_SECTION,
-        source_path: key,
-        target_property: selectedTarget,
-        resolver: 'identity',
-        is_active: draft.is_active !== false,
+      const savedRow = {
+        source_label: sourceMeta?.label || key,
+        source_group: sourceMeta?.group || (key.startsWith('section__') ? 'Secciones del presupuesto' : 'Nota de venta'),
+        source_description: sourceMeta?.description || '',
+        ...(data?.mapping || {
+          source_key: key,
+          source_section: PRODUCTION_SOURCE_SECTION,
+          source_path: key,
+          target_property: selectedTarget,
+          resolver: 'identity',
+          is_active: draft.is_active !== false,
+        }),
       };
 
       setMappingRows((current) => {
@@ -942,7 +968,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       <div className="formulas-panel">
         <h2>Asignador de propiedades desde Nota de venta</h2>
         <p className="hint">
-          Acá definís qué dato de la Nota de venta del presupuestador alimenta cada propiedad del integrador.
+          Acá asignás cada sección del presupuesto a una propiedad del integrador. El valor será el item elegido en esa sección; si la sección no participa en la NV, la propiedad asignada se escribirá como null.
         </p>
 
         {!canEditFormulas && <div className="info">Modo solo lectura de asignaciones.</div>}
@@ -954,13 +980,13 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
           style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}
         >
           <label style={{ minWidth: 360, flex: 1 }}>
-            Buscar propiedad origen
+            Buscar sección / propiedad origen
             <br />
             <input
               type="text"
               value={productionSearch}
               onChange={(e) => setProductionSearch(e.target.value)}
-              placeholder="Buscar por grupo, propiedad origen o propiedad destino…"
+              placeholder="Buscar por sección, item origen o propiedad destino…"
               style={{ width: '100%' }}
             />
           </label>
@@ -975,7 +1001,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
               <thead>
                 <tr>
                   <th>Grupo</th>
-                  <th>Propiedad presupuestador</th>
+                  <th>Sección / propiedad presupuestador</th>
                   <th>Descripción</th>
                   <th>Propiedad integrador</th>
                   <th>Activo</th>

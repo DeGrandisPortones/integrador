@@ -2,6 +2,51 @@ const SOURCE_APP = 'presupuestador';
 const PRODUCTION_SOURCE_SECTION = 'nota_venta';
 const PRODUCTION_ASSIGNMENTS_TABLE = 'public.presupuestador_production_property_assignments';
 
+const BASE_PRODUCTION_SOURCE_PROPERTIES = [
+  { source_key: 'nv', label: 'NV', group: 'Referencias', description: 'Número de nota de venta final.' },
+  { source_key: 'referencia_nv', label: 'Referencia NV', group: 'Referencias', description: 'Texto completo de la NV, por ejemplo NV5056.' },
+  { source_key: 'referencia_np', label: 'Referencia NP', group: 'Referencias', description: 'Texto completo de la NP origen, si existe.' },
+  { source_key: 'quote_number', label: 'Número interno presupuesto', group: 'Referencias', description: 'Número interno del presupuestador.' },
+  { source_key: 'fecha_presupuesto', label: 'Fecha presupuesto', group: 'Fechas', description: 'Fecha de creación del presupuesto original.' },
+  { source_key: 'fecha_confirmacion', label: 'Fecha confirmación', group: 'Fechas', description: 'Fecha en la que se confirmó el presupuesto.' },
+  { source_key: 'fecha_aprobacion_comercial', label: 'Fecha aprobación comercial', group: 'Fechas', description: 'Fecha de aprobación comercial.' },
+  { source_key: 'fecha_aprobacion_tecnica', label: 'Fecha aprobación técnica', group: 'Fechas', description: 'Fecha de aprobación técnica inicial.' },
+  { source_key: 'fecha_np', label: 'Fecha NP', group: 'Fechas', description: 'Fecha de generación/sync de la NP en Odoo, si existe.' },
+  { source_key: 'fecha_medicion', label: 'Fecha medición', group: 'Fechas', description: 'Fecha de medición del portón, si existe.' },
+  { source_key: 'fecha_revision_tecnica_final', label: 'Fecha revisión técnica final', group: 'Fechas', description: 'Fecha de revisión técnica final de la medición.' },
+  { source_key: 'fecha_solicitud_salida_acopio', label: 'Fecha solicitud salida de acopio', group: 'Fechas', description: 'Fecha en la que se pidió pasar un portón de acopio a producción.' },
+  { source_key: 'fecha_nv', label: 'Fecha NV', group: 'Fechas', description: 'Fecha de generación/sync de la NV final en Odoo.' },
+  { source_key: 'catalog_kind', label: 'Tipo de catálogo', group: 'General', description: 'porton / ipanel / otros.' },
+  { source_key: 'fulfillment_mode', label: 'Modo', group: 'General', description: 'acopio / produccion.' },
+  { source_key: 'payment_method', label: 'Forma de pago', group: 'General', description: 'Forma de pago del presupuesto.' },
+  { source_key: 'cliente_nombre', label: 'Cliente nombre', group: 'Cliente', description: 'Nombre del cliente final.' },
+  { source_key: 'cliente_apellido', label: 'Cliente apellido', group: 'Cliente', description: 'Apellido del cliente final.' },
+  { source_key: 'cliente_nombre_completo', label: 'Cliente nombre completo', group: 'Cliente', description: 'Nombre y apellido del cliente final.' },
+  { source_key: 'cliente_telefono', label: 'Cliente teléfono', group: 'Cliente', description: 'Teléfono del cliente final.' },
+  { source_key: 'cliente_email', label: 'Cliente email', group: 'Cliente', description: 'Email del cliente final.' },
+  { source_key: 'cliente_direccion', label: 'Cliente dirección', group: 'Cliente', description: 'Dirección del cliente final.' },
+  { source_key: 'cliente_localidad', label: 'Cliente localidad', group: 'Cliente', description: 'Ciudad / localidad del cliente final.' },
+  { source_key: 'cliente_maps_url', label: 'Cliente Maps', group: 'Cliente', description: 'URL de Google Maps del cliente.' },
+  { source_key: 'vendido_por_rol', label: 'Vendido por rol', group: 'Venta', description: 'Rol del usuario que vendió el portón.' },
+  { source_key: 'vendido_por_nombre', label: 'Vendido por nombre', group: 'Venta', description: 'Nombre del usuario que vendió el portón.' },
+  { source_key: 'vendido_por_username', label: 'Vendido por usuario', group: 'Venta', description: 'Username del usuario que vendió el portón.' },
+  { source_key: 'vendedor_nombre', label: 'Vendedor nombre', group: 'Venta', description: 'Nombre del vendedor, si la venta la hizo un vendedor.' },
+  { source_key: 'distribuidor_nombre', label: 'Distribuidor nombre', group: 'Venta', description: 'Nombre del distribuidor, si la venta la hizo un distribuidor.' },
+  { source_key: 'porton_type', label: 'Sistema (label visible)', group: 'Portón', description: 'Tipo/sistema visible, en mayúsculas como el desplegable del cotizador.' },
+  { source_key: 'porton_type_key', label: 'Sistema (key interna)', group: 'Portón', description: 'Key interna, por ejemplo acero_simil_aluminio_clasico.' },
+  { source_key: 'alto_final_mm', label: 'Alto final (mm)', group: 'Portón', description: 'Alto final en milímetros.' },
+  { source_key: 'ancho_final_mm', label: 'Ancho final (mm)', group: 'Portón', description: 'Ancho final en milímetros.' },
+  { source_key: 'cantidad_parantes', label: 'Cantidad parantes', group: 'Portón', description: 'Cantidad de parantes.' },
+  { source_key: 'orientacion_parantes', label: 'Orientación parantes', group: 'Portón', description: 'Orientación de parantes.' },
+  { source_key: 'distribucion_parantes', label: 'Distribución parantes', group: 'Portón', description: 'Distribución de parantes.' },
+  { source_key: 'observaciones_parantes', label: 'Observaciones parantes', group: 'Portón', description: 'Observaciones de parantes.' },
+  { source_key: 'tolerance_percent', label: 'Tolerancia %', group: 'Métricas', description: 'Tolerancia porcentual final aplicada.' },
+  { source_key: 'tolerance_amount', label: 'Tolerancia importe', group: 'Métricas', description: 'Tolerancia monetaria aplicada.' },
+  { source_key: 'difference_amount', label: 'Diferencia final', group: 'Métricas', description: 'Diferencia final calculada.' },
+  { source_key: 'absorbed_by_company', label: 'Absorbido por empresa', group: 'Métricas', description: 'true / false.' },
+  { source_key: 'final_amount_to_charge', label: 'Importe final a cobrar', group: 'Métricas', description: 'Monto final de la NV.' },
+];
+
 const MEASUREMENT_SOURCE_CATALOG = [
   {
     section_key: 'datos_generales',
@@ -136,13 +181,32 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function slugifySimple(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
+function buildSectionSourceKey(sectionName) {
+  const slug = slugifySimple(sectionName);
+  return slug ? `section__${slug}` : '';
+}
+
+function labelFromSectionSourceKey(sourceKey) {
+  const raw = String(sourceKey || '').replace(/^section__/, '').replace(/_/g, ' ').trim();
+  return raw ? raw.replace(/\w/g, (m) => m.toUpperCase()) : sourceKey;
+}
+
 function isProductionAssignmentPayload(payload) {
   const section = normalizeText(payload?.source_section);
   return section === PRODUCTION_SOURCE_SECTION || !!normalizeText(payload?.source_key);
 }
 
-function mapProductionAssignmentRow(row) {
-  const sourceKey = normalizeText(row?.source_key);
+function mapProductionAssignmentRow(row, meta = {}) {
+  const sourceKey = normalizeText(row?.source_key || meta?.source_key || meta?.path);
   return {
     id: sourceKey ? `nv:${sourceKey}` : null,
     source_key: sourceKey,
@@ -150,6 +214,9 @@ function mapProductionAssignmentRow(row) {
     source_app: SOURCE_APP,
     source_section: PRODUCTION_SOURCE_SECTION,
     source_path: sourceKey,
+    source_label: meta?.label || row?.source_label || sourceKey,
+    source_group: meta?.group || row?.source_group || (sourceKey.startsWith('section__') ? 'Secciones del presupuesto' : 'Nota de venta'),
+    source_description: meta?.description || row?.source_description || '',
     resolver: 'identity',
     is_active: row?.is_active !== false,
     created_at: row?.created_at || null,
@@ -204,26 +271,119 @@ async function listLegacyMeasurementPropertyMappings(pool) {
   return rows || [];
 }
 
-async function listProductionPropertyAssignments(pool) {
+async function listProductionSectionSourceProperties(pool) {
+  if (!pool) return [];
+
+  const byKey = new Map();
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT name
+      FROM public.presupuestador_sections
+      WHERE COALESCE(name, '') <> ''
+      ORDER BY name ASC
+    `);
+
+    for (const row of rows || []) {
+      const sectionName = normalizeText(row?.name);
+      const sourceKey = buildSectionSourceKey(sectionName);
+      if (!sectionName || !sourceKey) continue;
+      byKey.set(sourceKey, {
+        path: sourceKey,
+        source_key: sourceKey,
+        label: sectionName,
+        group: 'Secciones del presupuesto',
+        description: `Item elegido en la sección ${sectionName}. Si la sección no participa en la NV, la propiedad asignada queda null.`,
+      });
+    }
+  } catch (err) {
+    console.warn('No se pudieron leer secciones desde public.presupuestador_sections:', err?.message || err);
+  }
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT key AS source_key
+      FROM public.preproduccion_valores pv
+      CROSS JOIN LATERAL jsonb_object_keys(COALESCE(pv.data, '{}'::jsonb)) AS j(key)
+      WHERE key LIKE 'section__%'
+      ORDER BY key ASC
+      LIMIT 1000
+    `);
+
+    for (const row of rows || []) {
+      const sourceKey = normalizeText(row?.source_key);
+      if (!sourceKey || byKey.has(sourceKey)) continue;
+      byKey.set(sourceKey, {
+        path: sourceKey,
+        source_key: sourceKey,
+        label: labelFromSectionSourceKey(sourceKey),
+        group: 'Secciones del presupuesto',
+        description: 'Item elegido en esta sección del presupuesto. Si la sección no participa en la NV, la propiedad asignada queda null.',
+      });
+    }
+  } catch (err) {
+    console.warn('No se pudieron detectar secciones desde preproduccion_valores:', err?.message || err);
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => String(a.label).localeCompare(String(b.label), 'es'));
+}
+
+async function listProductionSourceCatalog(pool) {
+  const sectionFields = await listProductionSectionSourceProperties(pool);
+  const baseFields = BASE_PRODUCTION_SOURCE_PROPERTIES.map((item) => ({
+    path: item.source_key,
+    source_key: item.source_key,
+    label: item.label,
+    group: item.group || 'Campos generales',
+    description: item.description || '',
+  }));
+
+  return {
+    section_key: PRODUCTION_SOURCE_SECTION,
+    section_label: 'Nota de venta / Presupuesto',
+    fields: [...sectionFields, ...baseFields],
+  };
+}
+
+async function listProductionPropertyAssignmentsRaw(pool) {
   const { rows } = await pool.query(`
     SELECT source_key, target_property, is_active, created_at, updated_at
     FROM ${PRODUCTION_ASSIGNMENTS_TABLE}
     ORDER BY source_key ASC
   `);
 
-  return (rows || []).map(mapProductionAssignmentRow);
+  return rows || [];
+}
+
+async function listProductionPropertyAssignments(pool) {
+  const rows = await listProductionPropertyAssignmentsRaw(pool);
+  return rows.map((row) => mapProductionAssignmentRow(row));
 }
 
 async function listMeasurementPropertyMappings(pool) {
   await ensureMeasurementMappingsTable(pool);
 
-  const [legacyRows, productionRows] = await Promise.all([
+  const [legacyRows, productionRowsRaw, productionCatalog] = await Promise.all([
     listLegacyMeasurementPropertyMappings(pool),
-    listProductionPropertyAssignments(pool),
+    listProductionPropertyAssignmentsRaw(pool),
+    listProductionSourceCatalog(pool),
   ]);
 
+  const productionByKey = new Map();
+  for (const field of productionCatalog?.fields || []) {
+    const sourceKey = normalizeText(field?.source_key || field?.path);
+    if (!sourceKey) continue;
+    productionByKey.set(sourceKey, mapProductionAssignmentRow({ source_key: sourceKey, target_property: '', is_active: true }, field));
+  }
+
+  for (const row of productionRowsRaw || []) {
+    const sourceKey = normalizeText(row?.source_key);
+    const meta = productionByKey.get(sourceKey) || {};
+    productionByKey.set(sourceKey, mapProductionAssignmentRow(row, meta));
+  }
+
   const visibleLegacyRows = (legacyRows || []).filter((row) => row?.source_section !== PRODUCTION_SOURCE_SECTION);
-  return [...visibleLegacyRows, ...productionRows];
+  return [...visibleLegacyRows, ...Array.from(productionByKey.values())];
 }
 
 async function upsertProductionPropertyAssignment(pool, payload) {
@@ -338,6 +498,7 @@ function computeMeasurementMappedValues(measurementForm, mappings) {
 module.exports = {
   SOURCE_APP,
   MEASUREMENT_SOURCE_CATALOG,
+  BASE_PRODUCTION_SOURCE_PROPERTIES,
   PRODUCTION_SOURCE_SECTION,
   PRODUCTION_ASSIGNMENTS_TABLE,
   ensureMeasurementMappingsTable,
@@ -347,4 +508,5 @@ module.exports = {
   computeMeasurementMappedValues,
   applyResolver,
   getByPath,
+  buildSectionSourceKey,
 };
