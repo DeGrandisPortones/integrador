@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const HIDE_MEASUREMENT_MAPPINGS_PANEL = true;
+const PRODUCTION_SOURCE_SECTION = 'nota_venta';
 
 const RESOLVER_OPTIONS = [
   { value: 'identity', label: 'Directo' },
@@ -10,6 +12,57 @@ const RESOLVER_OPTIONS = [
   { value: 'sum', label: 'Suma' },
   { value: 'first_non_empty', label: 'Primer valor no vacío' },
   { value: 'join_csv', label: 'Unir CSV' },
+];
+
+const PRODUCTION_SOURCE_PROPERTIES = [
+  { source_key: 'nv', label: 'NV', group: 'Referencias', description: 'Número de nota de venta final.' },
+  { source_key: 'referencia_nv', label: 'Referencia NV', group: 'Referencias', description: 'Texto completo de la NV, por ejemplo NV5056.' },
+  { source_key: 'referencia_np', label: 'Referencia NP', group: 'Referencias', description: 'Texto completo de la NP origen, si existe.' },
+  { source_key: 'quote_number', label: 'Número interno presupuesto', group: 'Referencias', description: 'Número interno del presupuestador.' },
+
+  { source_key: 'fecha_presupuesto', label: 'Fecha presupuesto', group: 'Fechas', description: 'Fecha de creación del presupuesto original.' },
+  { source_key: 'fecha_confirmacion', label: 'Fecha confirmación', group: 'Fechas', description: 'Fecha en la que se confirmó el presupuesto.' },
+  { source_key: 'fecha_aprobacion_comercial', label: 'Fecha aprobación comercial', group: 'Fechas', description: 'Fecha de aprobación comercial.' },
+  { source_key: 'fecha_aprobacion_tecnica', label: 'Fecha aprobación técnica', group: 'Fechas', description: 'Fecha de aprobación técnica inicial.' },
+  { source_key: 'fecha_np', label: 'Fecha NP', group: 'Fechas', description: 'Fecha de generación/sync de la NP en Odoo, si existe.' },
+  { source_key: 'fecha_medicion', label: 'Fecha medición', group: 'Fechas', description: 'Fecha de medición del portón, si existe.' },
+  { source_key: 'fecha_revision_tecnica_final', label: 'Fecha revisión técnica final', group: 'Fechas', description: 'Fecha de revisión técnica final de la medición.' },
+  { source_key: 'fecha_solicitud_salida_acopio', label: 'Fecha solicitud salida de acopio', group: 'Fechas', description: 'Fecha en la que se pidió pasar un portón de acopio a producción.' },
+  { source_key: 'fecha_nv', label: 'Fecha NV', group: 'Fechas', description: 'Fecha de generación/sync de la NV final en Odoo.' },
+
+  { source_key: 'catalog_kind', label: 'Tipo de catálogo', group: 'General', description: 'porton / ipanel / otros.' },
+  { source_key: 'fulfillment_mode', label: 'Modo', group: 'General', description: 'acopio / produccion.' },
+  { source_key: 'payment_method', label: 'Forma de pago', group: 'General', description: 'Forma de pago del presupuesto.' },
+
+  { source_key: 'cliente_nombre', label: 'Cliente nombre', group: 'Cliente', description: 'Nombre del cliente final.' },
+  { source_key: 'cliente_apellido', label: 'Cliente apellido', group: 'Cliente', description: 'Apellido del cliente final.' },
+  { source_key: 'cliente_nombre_completo', label: 'Cliente nombre completo', group: 'Cliente', description: 'Nombre y apellido del cliente final.' },
+  { source_key: 'cliente_telefono', label: 'Cliente teléfono', group: 'Cliente', description: 'Teléfono del cliente final.' },
+  { source_key: 'cliente_email', label: 'Cliente email', group: 'Cliente', description: 'Email del cliente final.' },
+  { source_key: 'cliente_direccion', label: 'Cliente dirección', group: 'Cliente', description: 'Dirección del cliente final.' },
+  { source_key: 'cliente_localidad', label: 'Cliente localidad', group: 'Cliente', description: 'Ciudad / localidad del cliente final.' },
+  { source_key: 'cliente_maps_url', label: 'Cliente Maps', group: 'Cliente', description: 'URL de Google Maps del cliente.' },
+
+  { source_key: 'vendido_por_rol', label: 'Vendido por rol', group: 'Venta', description: 'Rol del usuario que vendió el portón.' },
+  { source_key: 'vendido_por_nombre', label: 'Vendido por nombre', group: 'Venta', description: 'Nombre del usuario que vendió el portón.' },
+  { source_key: 'vendido_por_username', label: 'Vendido por usuario', group: 'Venta', description: 'Username del usuario que vendió el portón.' },
+  { source_key: 'vendedor_nombre', label: 'Vendedor nombre', group: 'Venta', description: 'Nombre del vendedor, si la venta la hizo un vendedor.' },
+  { source_key: 'distribuidor_nombre', label: 'Distribuidor nombre', group: 'Venta', description: 'Nombre del distribuidor, si la venta la hizo un distribuidor.' },
+
+  { source_key: 'porton_type', label: 'Sistema (label visible)', group: 'Portón', description: 'Tipo/sistema visible, en mayúsculas como el desplegable del cotizador.' },
+  { source_key: 'porton_type_key', label: 'Sistema (key interna)', group: 'Portón', description: 'Key interna, por ejemplo acero_simil_aluminio_clasico.' },
+  { source_key: 'alto_final_mm', label: 'Alto final (mm)', group: 'Portón', description: 'Alto final en milímetros.' },
+  { source_key: 'ancho_final_mm', label: 'Ancho final (mm)', group: 'Portón', description: 'Ancho final en milímetros.' },
+  { source_key: 'cantidad_parantes', label: 'Cantidad parantes', group: 'Portón', description: 'Cantidad de parantes.' },
+  { source_key: 'orientacion_parantes', label: 'Orientación parantes', group: 'Portón', description: 'Orientación de parantes.' },
+  { source_key: 'distribucion_parantes', label: 'Distribución parantes', group: 'Portón', description: 'Distribución de parantes.' },
+  { source_key: 'observaciones_parantes', label: 'Observaciones parantes', group: 'Portón', description: 'Observaciones de parantes.' },
+
+  { source_key: 'tolerance_percent', label: 'Tolerancia %', group: 'Métricas', description: 'Tolerancia porcentual final aplicada.' },
+  { source_key: 'tolerance_amount', label: 'Tolerancia importe', group: 'Métricas', description: 'Tolerancia monetaria aplicada.' },
+  { source_key: 'difference_amount', label: 'Diferencia final', group: 'Métricas', description: 'Diferencia final calculada.' },
+  { source_key: 'absorbed_by_company', label: 'Absorbido por empresa', group: 'Métricas', description: 'true / false.' },
+  { source_key: 'final_amount_to_charge', label: 'Importe final a cobrar', group: 'Métricas', description: 'Monto final de la NV.' },
 ];
 
 async function saveFormulaToBackend(columnName, expression, authHeader) {
@@ -80,6 +133,20 @@ function getResolverLabel(value) {
   return match?.label || value || 'Directo';
 }
 
+function isProductionMapping(row = {}) {
+  return row?.source_section === PRODUCTION_SOURCE_SECTION || !!row?.source_key;
+}
+
+function getProductionSourceKey(row = {}) {
+  return String(row?.source_key || row?.source_path || '').trim();
+}
+
+function buildProductionSearchText(item = {}, draft = {}) {
+  return [item?.group, item?.label, item?.source_key, item?.description, draft?.target_property]
+    .join(' ')
+    .toLowerCase();
+}
+
 export default function FormulasPage({ hasData, columns, formulas, permissions, authHeader }) {
   const canEditFormulas = !!permissions?.canEditFormulas;
 
@@ -98,6 +165,11 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
   const [mappingLoading, setMappingLoading] = useState(false);
   const [mappingError, setMappingError] = useState('');
   const [savingMappingCol, setSavingMappingCol] = useState(null);
+
+  const [productionDrafts, setProductionDrafts] = useState({});
+  const [productionSearch, setProductionSearch] = useState('');
+  const [productionError, setProductionError] = useState('');
+  const [savingProductionKey, setSavingProductionKey] = useState(null);
 
   const [valueProperty, setValueProperty] = useState('');
   const [valueOptions, setValueOptions] = useState([]);
@@ -120,6 +192,41 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     });
     return map;
   }, [mappingCatalog]);
+
+  const productionSourceProperties = useMemo(() => {
+    const byKey = new Map();
+
+    (PRODUCTION_SOURCE_PROPERTIES || []).forEach((item) => {
+      const key = String(item?.source_key || '').trim();
+      if (key) byKey.set(key, item);
+    });
+
+    (mappingRows || []).forEach((row) => {
+      if (!isProductionMapping(row)) return;
+      const key = getProductionSourceKey(row);
+      if (!key || byKey.has(key)) return;
+      byKey.set(key, {
+        source_key: key,
+        label: key,
+        group: 'Nota de venta',
+        description: 'Campo ya asignado desde Nota de venta.',
+      });
+    });
+
+    return Array.from(byKey.values()).sort((a, b) =>
+      String(a.group || '').localeCompare(String(b.group || ''), 'es') ||
+      String(a.label || a.source_key || '').localeCompare(String(b.label || b.source_key || ''), 'es')
+    );
+  }, [mappingRows]);
+
+  const productionFilteredSourceProperties = useMemo(() => {
+    const needle = String(productionSearch || '').trim().toLowerCase();
+    if (!needle) return productionSourceProperties;
+    return (productionSourceProperties || []).filter((item) => {
+      const key = String(item?.source_key || '');
+      return buildProductionSearchText(item, productionDrafts[key] || {}).includes(needle);
+    });
+  }, [productionSourceProperties, productionDrafts, productionSearch]);
 
   useEffect(() => {
     const initial = {};
@@ -160,6 +267,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
   useEffect(() => {
     const byTarget = new Map();
     (mappingRows || []).forEach((row) => {
+      if (isProductionMapping(row)) return;
       byTarget.set(String(row.target_property), row);
     });
 
@@ -177,6 +285,28 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     });
     setMappingDrafts(next);
   }, [targetProperties, mappingRows]);
+
+  useEffect(() => {
+    const next = {};
+
+    (mappingRows || []).forEach((row) => {
+      if (!isProductionMapping(row)) return;
+      const sourceKey = getProductionSourceKey(row);
+      if (!sourceKey) return;
+      next[sourceKey] = {
+        target_property: String(row?.target_property || ''),
+        is_active: row?.is_active !== false,
+      };
+    });
+
+    (PRODUCTION_SOURCE_PROPERTIES || []).forEach((item) => {
+      const sourceKey = String(item?.source_key || '').trim();
+      if (!sourceKey || next[sourceKey]) return;
+      next[sourceKey] = { target_property: '', is_active: true };
+    });
+
+    setProductionDrafts(next);
+  }, [mappingRows]);
 
   useEffect(() => {
     if (!valueProperty) return;
@@ -455,6 +585,16 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     }));
   }
 
+  function setProductionDraft(sourceKey, patch) {
+    setProductionDrafts((current) => ({
+      ...current,
+      [sourceKey]: {
+        ...(current[sourceKey] || { target_property: '', is_active: true }),
+        ...(patch || {}),
+      },
+    }));
+  }
+
   async function handleSaveMapping(targetProperty) {
     if (!canEditFormulas) {
       window.alert('No tenés permisos para editar mappings.');
@@ -497,6 +637,73 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       setMappingError(err.message || 'Error guardando mapping');
     } finally {
       setSavingMappingCol(null);
+    }
+  }
+
+  async function handleSaveProductionMapping(sourceKey) {
+    if (!canEditFormulas) {
+      window.alert('No tenés permisos para editar asignaciones.');
+      return;
+    }
+
+    const key = String(sourceKey || '').trim();
+    if (!key) return;
+
+    const draft = productionDrafts[key] || { target_property: '', is_active: true };
+    const selectedTarget = String(draft.target_property || '').trim();
+
+    const ok = window.confirm(
+      `¿Guardar asignación desde Nota de venta?\n\n` +
+      `Propiedad presupuestador: ${key}\n` +
+      `Propiedad integrador: ${selectedTarget || '(sin asignar)'}\n` +
+      `Activo: ${draft.is_active !== false ? 'Sí' : 'No'}`
+    );
+    if (!ok) return;
+
+    setSavingProductionKey(key);
+    setProductionError('');
+    try {
+      const data = await savePropertyMappingToBackend({
+        source_app: 'presupuestador',
+        source_section: PRODUCTION_SOURCE_SECTION,
+        source_path: key,
+        source_key: key,
+        target_property: selectedTarget,
+        resolver: 'identity',
+        is_active: draft.is_active !== false,
+      }, authHeader);
+
+      const savedRow = data?.mapping || {
+        source_key: key,
+        source_section: PRODUCTION_SOURCE_SECTION,
+        source_path: key,
+        target_property: selectedTarget,
+        resolver: 'identity',
+        is_active: draft.is_active !== false,
+      };
+
+      setMappingRows((current) => {
+        const next = (current || []).filter((item) => {
+          if (!isProductionMapping(item)) return true;
+          const itemSourceKey = getProductionSourceKey(item);
+          if (itemSourceKey === key) return false;
+          if (selectedTarget && String(item?.target_property || '') === selectedTarget) return false;
+          return true;
+        });
+        next.push(savedRow);
+        next.sort((a, b) =>
+          String(getProductionSourceKey(a) || a.target_property || '').localeCompare(
+            String(getProductionSourceKey(b) || b.target_property || ''),
+            'es'
+          )
+        );
+        return next;
+      });
+    } catch (err) {
+      console.error('Error guardando asignación desde Nota de venta:', err);
+      setProductionError(err.message || 'Error guardando asignación desde Nota de venta');
+    } finally {
+      setSavingProductionKey(null);
     }
   }
 
@@ -613,7 +820,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
         )}
       </div>
 
-      <div className="formulas-panel">
+      <div className="formulas-panel" hidden={HIDE_MEASUREMENT_MAPPINGS_PANEL}>
         <h2>Asignador de propiedades desde medición</h2>
         <p className="hint">
           Acá definís qué dato de la planilla de medición de presupuestador alimenta cada propiedad del integrador.
@@ -720,6 +927,108 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                             disabled={savingMappingCol === targetProperty}
                           >
                             {savingMappingCol === targetProperty ? 'Guardando…' : 'Guardar'}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="formulas-panel">
+        <h2>Asignador de propiedades desde Nota de venta</h2>
+        <p className="hint">
+          Acá definís qué dato de la Nota de venta del presupuestador alimenta cada propiedad del integrador.
+        </p>
+
+        {!canEditFormulas && <div className="info">Modo solo lectura de asignaciones.</div>}
+        {mappingLoading && <div className="info">Cargando asignaciones…</div>}
+        {productionError && <div className="error">⚠ {productionError}</div>}
+
+        <div
+          className="field-row"
+          style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}
+        >
+          <label style={{ minWidth: 360, flex: 1 }}>
+            Buscar propiedad origen
+            <br />
+            <input
+              type="text"
+              value={productionSearch}
+              onChange={(e) => setProductionSearch(e.target.value)}
+              placeholder="Buscar por grupo, propiedad origen o propiedad destino…"
+              style={{ width: '100%' }}
+            />
+          </label>
+          <div className="hint" style={{ marginBottom: 4 }}>
+            {productionFilteredSourceProperties.length} propiedad(es)
+          </div>
+        </div>
+
+        {!mappingLoading && (
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Grupo</th>
+                  <th>Propiedad presupuestador</th>
+                  <th>Descripción</th>
+                  <th>Propiedad integrador</th>
+                  <th>Activo</th>
+                  {canEditFormulas && <th>Acción</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {productionFilteredSourceProperties.map((item) => {
+                  const sourceKey = String(item?.source_key || '');
+                  const draft = productionDrafts[sourceKey] || { target_property: '', is_active: true };
+
+                  return (
+                    <tr key={`production-${sourceKey}`}>
+                      <td>{item?.group || '—'}</td>
+                      <td>
+                        <div style={{ fontWeight: 700 }}>{item?.label || sourceKey}</div>
+                        <div className="hint" style={{ margin: 0 }}>{sourceKey}</div>
+                      </td>
+                      <td>{item?.description || '—'}</td>
+                      <td>
+                        <select
+                          value={draft.target_property || ''}
+                          disabled={!canEditFormulas}
+                          onChange={(e) => setProductionDraft(sourceKey, { target_property: e.target.value })}
+                        >
+                          <option value="">Sin asignar</option>
+                          {targetProperties.map((target) => (
+                            <option key={`${sourceKey}-${target}`} value={target}>
+                              {target}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={draft.is_active !== false}
+                            disabled={!canEditFormulas}
+                            onChange={(e) => setProductionDraft(sourceKey, { is_active: e.target.checked })}
+                          />
+                          {draft.is_active !== false ? 'Sí' : 'No'}
+                        </label>
+                      </td>
+                      {canEditFormulas && (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-small"
+                            onClick={() => handleSaveProductionMapping(sourceKey)}
+                            disabled={savingProductionKey === sourceKey}
+                          >
+                            {savingProductionKey === sourceKey ? 'Guardando…' : 'Guardar'}
                           </button>
                         </td>
                       )}

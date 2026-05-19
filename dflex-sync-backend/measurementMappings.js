@@ -1,4 +1,6 @@
 const SOURCE_APP = 'presupuestador';
+const PRODUCTION_SOURCE_SECTION = 'nota_venta';
+const PRODUCTION_ASSIGNMENTS_TABLE = 'public.presupuestador_production_property_assignments';
 
 const MEASUREMENT_SOURCE_CATALOG = [
   {
@@ -130,6 +132,31 @@ function applyResolver(value, resolver) {
   return value;
 }
 
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function isProductionAssignmentPayload(payload) {
+  const section = normalizeText(payload?.source_section);
+  return section === PRODUCTION_SOURCE_SECTION || !!normalizeText(payload?.source_key);
+}
+
+function mapProductionAssignmentRow(row) {
+  const sourceKey = normalizeText(row?.source_key);
+  return {
+    id: sourceKey ? `nv:${sourceKey}` : null,
+    source_key: sourceKey,
+    target_property: normalizeText(row?.target_property),
+    source_app: SOURCE_APP,
+    source_section: PRODUCTION_SOURCE_SECTION,
+    source_path: sourceKey,
+    resolver: 'identity',
+    is_active: row?.is_active !== false,
+    created_at: row?.created_at || null,
+    updated_at: row?.updated_at || null,
+  };
+}
+
 async function ensureMeasurementMappingsTable(pool) {
   if (!pool) throw new Error('SUPABASE_DB_URL no está configurado');
 
@@ -146,11 +173,19 @@ async function ensureMeasurementMappingsTable(pool) {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${PRODUCTION_ASSIGNMENTS_TABLE} (
+      source_key text PRIMARY KEY,
+      target_property text NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
 }
 
-async function listMeasurementPropertyMappings(pool) {
-  await ensureMeasurementMappingsTable(pool);
-
+async function listLegacyMeasurementPropertyMappings(pool) {
   const { rows } = await pool.query(`
     SELECT
       id,
@@ -169,16 +204,72 @@ async function listMeasurementPropertyMappings(pool) {
   return rows || [];
 }
 
+async function listProductionPropertyAssignments(pool) {
+  const { rows } = await pool.query(`
+    SELECT source_key, target_property, is_active, created_at, updated_at
+    FROM ${PRODUCTION_ASSIGNMENTS_TABLE}
+    ORDER BY source_key ASC
+  `);
+
+  return (rows || []).map(mapProductionAssignmentRow);
+}
+
+async function listMeasurementPropertyMappings(pool) {
+  await ensureMeasurementMappingsTable(pool);
+
+  const [legacyRows, productionRows] = await Promise.all([
+    listLegacyMeasurementPropertyMappings(pool),
+    listProductionPropertyAssignments(pool),
+  ]);
+
+  const visibleLegacyRows = (legacyRows || []).filter((row) => row?.source_section !== PRODUCTION_SOURCE_SECTION);
+  return [...visibleLegacyRows, ...productionRows];
+}
+
+async function upsertProductionPropertyAssignment(pool, payload) {
+  await ensureMeasurementMappingsTable(pool);
+
+  const sourceKey = normalizeText(payload?.source_key || payload?.source_path);
+  if (!sourceKey) throw new Error('Falta source_key/source_path para asignación desde Nota de venta');
+
+  const targetProperty = normalizeText(payload?.target_property) || null;
+  const isActive = payload?.is_active !== false;
+
+  const { rows } = await pool.query(
+    `
+      INSERT INTO ${PRODUCTION_ASSIGNMENTS_TABLE} (
+        source_key,
+        target_property,
+        is_active
+      )
+      VALUES ($1, $2, $3)
+      ON CONFLICT (source_key)
+      DO UPDATE SET
+        target_property = EXCLUDED.target_property,
+        is_active = EXCLUDED.is_active,
+        updated_at = now()
+      RETURNING source_key, target_property, is_active, created_at, updated_at
+    `,
+    [sourceKey, targetProperty, isActive]
+  );
+
+  return mapProductionAssignmentRow(rows?.[0] || {});
+}
+
 async function upsertMeasurementPropertyMapping(pool, payload) {
   await ensureMeasurementMappingsTable(pool);
 
-  const targetProperty = String(payload?.target_property || '').trim();
+  if (isProductionAssignmentPayload(payload)) {
+    return upsertProductionPropertyAssignment(pool, payload);
+  }
+
+  const targetProperty = normalizeText(payload?.target_property);
   if (!targetProperty) throw new Error('Falta target_property');
 
-  const sourceSection = payload?.source_section ? String(payload.source_section).trim() : null;
-  const sourcePath = payload?.source_path ? String(payload.source_path).trim() : null;
-  const resolver = String(payload?.resolver || 'identity').trim() || 'identity';
-  const sourceApp = String(payload?.source_app || SOURCE_APP).trim() || SOURCE_APP;
+  const sourceSection = payload?.source_section ? normalizeText(payload.source_section) : null;
+  const sourcePath = payload?.source_path ? normalizeText(payload.source_path) : null;
+  const resolver = normalizeText(payload?.resolver || 'identity') || 'identity';
+  const sourceApp = normalizeText(payload?.source_app || SOURCE_APP) || SOURCE_APP;
   const isActive = payload?.is_active !== false;
 
   const { rows } = await pool.query(
@@ -228,8 +319,10 @@ function computeMeasurementMappedValues(measurementForm, mappings) {
 
   for (const mapping of Array.isArray(mappings) ? mappings : []) {
     if (!mapping?.is_active) continue;
-    const targetProperty = String(mapping?.target_property || '').trim();
-    const sourcePath = String(mapping?.source_path || '').trim();
+    if (mapping?.source_section === PRODUCTION_SOURCE_SECTION) continue;
+
+    const targetProperty = normalizeText(mapping?.target_property);
+    const sourcePath = normalizeText(mapping?.source_path);
     if (!targetProperty || !sourcePath) continue;
 
     const raw = getByPath(safeForm, sourcePath);
@@ -245,6 +338,8 @@ function computeMeasurementMappedValues(measurementForm, mappings) {
 module.exports = {
   SOURCE_APP,
   MEASUREMENT_SOURCE_CATALOG,
+  PRODUCTION_SOURCE_SECTION,
+  PRODUCTION_ASSIGNMENTS_TABLE,
   ensureMeasurementMappingsTable,
   listMeasurementSourceCatalog,
   listMeasurementPropertyMappings,
