@@ -95,7 +95,7 @@ body {
   font-size: 13px;
 }
 
-/* ===== BOTÓN GUARDAR CAMBIOS ===== */
+/* ===== BOTON GUARDAR CAMBIOS ===== */
 
 .save-btn {
   padding: 6px 14px;
@@ -124,26 +124,26 @@ body {
   max-height: calc(100vh - 200px);
 }
 
-/* tabla para todas las páginas */
+/* tabla para todas las paginas */
 .data-table {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 12px;
-  table-layout: fixed; /* columnas más uniformes */
-  min-width: 1400px; /* fuerza scroll horizontal si la pantalla es más chica */
+  table-layout: fixed; /* columnas mas uniformes */
+  min-width: 1400px; /* fuerza scroll horizontal si la pantalla es mas chica */
 }
 
 .data-table th,
 .data-table td {
   padding: 6px 8px;
-  border-bottom: 1px solid #e5e7eb; /* sólo línea horizontal, sin bordes verticales */
+  border-bottom: 1px solid #e5e7eb; /* solo linea horizontal, sin bordes verticales */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 110px; /* ancho parecido entre columnas */
 }
 
-/* columnas muy chicas (ID / NV) un poco más angostas */
+/* columnas muy chicas (ID / NV) un poco mas angostas */
 .data-table th:first-child,
 .data-table td:first-child {
   min-width: 60px;
@@ -161,7 +161,7 @@ body {
   font-weight: 600;
 }
 
-/* ===== FILA DE FÓRMULAS (inputs del header) ===== */
+/* ===== FILA DE FORMULAS (inputs del header) ===== */
 
 .formula-input-header {
   width: 100%;
@@ -195,7 +195,7 @@ body {
   background: #eff6ff;
 }
 
-/* ===== PÁGINA IMPORT / FORMULAS ===== */
+/* ===== PAGINA IMPORT / FORMULAS ===== */
 
 .import-panel {
   margin-bottom: 12px;
@@ -241,17 +241,21 @@ body {
   color: #4b5563;
 }
 
-/* ===== PÁGINA DE FÓRMULAS ===== */
+/* ===== PAGINA DE FORMULAS ===== */
 
 .formulas-page {
   display: flex;
-  justify-content: center;
+  justify-content: stretch;
+  align-items: stretch;
+  width: 100%;
+  max-width: none;
   margin-top: 8px;
+  box-sizing: border-box;
 }
 
 .formulas-panel {
   width: 100%;
-  max-width: 1200px;
+  max-width: none;
   background: #ffffff;
   border-radius: 10px;
   border: 1px solid #e5e7eb;
@@ -269,7 +273,7 @@ body {
   margin: 2px 0 10px;
 }
 
-/* fila NV de prueba + botón */
+/* fila NV de prueba + boton */
 .field-row {
   display: flex;
   flex-wrap: wrap;
@@ -289,7 +293,7 @@ body {
   font-size: 13px;
 }
 
-/* botón gris para acciones secundarias (Cargar portón) */
+/* boton gris para acciones secundarias (Cargar porton) */
 .btn-secondary {
   padding: 6px 10px;
   border-radius: 999px;
@@ -309,7 +313,7 @@ body {
   cursor: default;
 }
 
-/* botón chiquito de disco 💾 en cada fila */
+/* boton chiquito de disco en cada fila */
 .btn-small {
   padding: 2px 6px;
   border-radius: 6px;
@@ -329,17 +333,20 @@ body {
   cursor: default;
 }
 
-/* tabla de fórmulas: un poquito más ancha y con mejor comportamiento en la col de fórmula */
+/* tabla de formulas: ocupa todo el ancho disponible y mantiene scroll si hace falta */
 .formulas-page .table-wrapper {
+  width: 100%;
   margin-top: 8px;
   max-height: 60vh;
+  box-sizing: border-box;
 }
 
 .formulas-page .data-table {
+  width: 100%;
   min-width: 900px;
 }
 
-/* Dejo que la fórmula (columna 2) pueda cortar línea para no generar columnas gigantes */
+/* Dejo que la formula (columna 2) pueda cortar linea para no generar columnas gigantes */
 .formulas-page .data-table th:nth-child(2),
 .formulas-page .data-table td:nth-child(2) {
   white-space: normal;
@@ -347,7 +354,7 @@ body {
 
 /* Ajusto un poco el ancho relativo de las columnas:
    1) Propiedad: chico
-   2) Fórmula: más ancho
+   2) Formula: mas ancho
    3) Pre / 4) Post: medianos
 */
 .formulas-page .data-table th:nth-child(1),
@@ -367,7 +374,7 @@ body {
   min-width: 160px;
 }
 
-/* El input de fórmula dentro de la tabla de fórmulas, un poco más cómodo */
+/* El input de formula dentro de la tabla de formulas, un poco mas comodo */
 .formulas-page .formula-input-header {
   font-size: 12px;
   padding: 4px 6px;
@@ -379,7 +386,7 @@ body {
   margin-top: 10px;
 }
 
-/* ==== Página de importación de Excel ==== */
+/* ==== Pagina de importacion de Excel ==== */
 
 .import-page {
   display: flex;
