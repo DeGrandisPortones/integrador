@@ -1,27 +1,22 @@
-# Integrador - copy/replace
+# Integrador - reemplazo directo
 
-Copiar estos archivos dentro del repo `integrador`, respetando la misma estructura de carpetas:
+Copiar la carpeta `dflex-sync-frontend` sobre la raiz del repo `integrador` y reemplazar archivos cuando el sistema lo pida.
+
+Archivo incluido:
 
 - `dflex-sync-frontend/src/pages/FormulasPage.jsx`
-- `dflex-sync-backend/measurementMappings.js`
 
-Qué cambia:
+Cambio principal:
 
-- Oculta el bloque `Asignador de propiedades desde medición` usando `hidden`.
-- Agrega el bloque visible `Asignador de propiedades desde Nota de venta`.
-- Permite elegir para cada propiedad origen de la NV qué propiedad existente del integrador debe recibir ese valor.
-- Guarda esas asignaciones en la tabla `public.presupuestador_production_property_assignments`, que es la tabla usada por el flujo de Nota de venta del presupuestador.
-- No requiere modificar `server.js`.
+- En `Asignador de propiedades desde Nota de venta` se agregan dos inputs arriba de la tabla:
+  - `NV integrador`
+  - `NV presupuestador`
+- La tabla muestra columnas nuevas:
+  - `Valor integrador`
+  - `Valor presupuestador`
+  - `Comparacion`
 
-Después de copiar/reemplazar:
-
-```bash
-cd dflex-sync-backend
-npm install
-npm start
-```
-
-y en otra terminal:
+Luego de copiar, ejecutar:
 
 ```bash
 cd dflex-sync-frontend

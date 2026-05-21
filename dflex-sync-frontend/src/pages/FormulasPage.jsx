@@ -7,63 +7,71 @@ const PRODUCTION_SOURCE_SECTION = 'nota_venta';
 
 const RESOLVER_OPTIONS = [
   { value: 'identity', label: 'Directo' },
-  { value: 'min', label: 'Mínimo' },
-  { value: 'max', label: 'Máximo' },
+  { value: 'min', label: 'Minimo' },
+  { value: 'max', label: 'Maximo' },
   { value: 'sum', label: 'Suma' },
-  { value: 'first_non_empty', label: 'Primer valor no vacío' },
+  { value: 'first_non_empty', label: 'Primer valor no vacio' },
   { value: 'join_csv', label: 'Unir CSV' },
 ];
 
 const PRODUCTION_SOURCE_PROPERTIES = [
-  { source_key: 'nv', label: 'NV', group: 'Referencias', description: 'Número de nota de venta final.' },
+  { source_key: 'nv', label: 'NV', group: 'Referencias', description: 'Numero de nota de venta final.' },
   { source_key: 'referencia_nv', label: 'Referencia NV', group: 'Referencias', description: 'Texto completo de la NV, por ejemplo NV5056.' },
   { source_key: 'referencia_np', label: 'Referencia NP', group: 'Referencias', description: 'Texto completo de la NP origen, si existe.' },
-  { source_key: 'quote_number', label: 'Número interno presupuesto', group: 'Referencias', description: 'Número interno del presupuestador.' },
+  { source_key: 'quote_number', label: 'Numero interno presupuesto', group: 'Referencias', description: 'Numero interno del presupuestador.' },
 
-  { source_key: 'fecha_presupuesto', label: 'Fecha presupuesto', group: 'Fechas', description: 'Fecha de creación del presupuesto original.' },
-  { source_key: 'fecha_confirmacion', label: 'Fecha confirmación', group: 'Fechas', description: 'Fecha en la que se confirmó el presupuesto.' },
-  { source_key: 'fecha_aprobacion_comercial', label: 'Fecha aprobación comercial', group: 'Fechas', description: 'Fecha de aprobación comercial.' },
-  { source_key: 'fecha_aprobacion_tecnica', label: 'Fecha aprobación técnica', group: 'Fechas', description: 'Fecha de aprobación técnica inicial.' },
-  { source_key: 'fecha_np', label: 'Fecha NP', group: 'Fechas', description: 'Fecha de generación/sync de la NP en Odoo, si existe.' },
-  { source_key: 'fecha_medicion', label: 'Fecha medición', group: 'Fechas', description: 'Fecha de medición del portón, si existe.' },
-  { source_key: 'fecha_revision_tecnica_final', label: 'Fecha revisión técnica final', group: 'Fechas', description: 'Fecha de revisión técnica final de la medición.' },
-  { source_key: 'fecha_solicitud_salida_acopio', label: 'Fecha solicitud salida de acopio', group: 'Fechas', description: 'Fecha en la que se pidió pasar un portón de acopio a producción.' },
-  { source_key: 'fecha_nv', label: 'Fecha NV', group: 'Fechas', description: 'Fecha de generación/sync de la NV final en Odoo.' },
+  { source_key: 'fecha_presupuesto', label: 'Fecha presupuesto', group: 'Fechas', description: 'Fecha de creacion del presupuesto original.' },
+  { source_key: 'fecha_confirmacion', label: 'Fecha confirmacion', group: 'Fechas', description: 'Fecha en la que se confirmo el presupuesto.' },
+  { source_key: 'fecha_aprobacion_comercial', label: 'Fecha aprobacion comercial', group: 'Fechas', description: 'Fecha de aprobacion comercial.' },
+  { source_key: 'fecha_aprobacion_tecnica', label: 'Fecha aprobacion tecnica', group: 'Fechas', description: 'Fecha de aprobacion tecnica inicial.' },
+  { source_key: 'fecha_np', label: 'Fecha NP', group: 'Fechas', description: 'Fecha de generacion/sync de la NP en Odoo, si existe.' },
+  { source_key: 'fecha_medicion', label: 'Fecha medicion', group: 'Fechas', description: 'Fecha de medicion del porton, si existe.' },
+  { source_key: 'fecha_revision_tecnica_final', label: 'Fecha revision tecnica final', group: 'Fechas', description: 'Fecha de revision tecnica final de la medicion.' },
+  { source_key: 'fecha_solicitud_salida_acopio', label: 'Fecha solicitud salida de acopio', group: 'Fechas', description: 'Fecha en la que se pidio pasar un porton de acopio a produccion.' },
+  { source_key: 'fecha_nv', label: 'Fecha NV', group: 'Fechas', description: 'Fecha de generacion/sync de la NV final en Odoo.' },
 
-  { source_key: 'catalog_kind', label: 'Tipo de catálogo', group: 'General', description: 'porton / ipanel / otros.' },
+  { source_key: 'catalog_kind', label: 'Tipo de catalogo', group: 'General', description: 'porton / ipanel / otros.' },
   { source_key: 'fulfillment_mode', label: 'Modo', group: 'General', description: 'acopio / produccion.' },
   { source_key: 'payment_method', label: 'Forma de pago', group: 'General', description: 'Forma de pago del presupuesto.' },
 
   { source_key: 'cliente_nombre', label: 'Cliente nombre', group: 'Cliente', description: 'Nombre del cliente final.' },
   { source_key: 'cliente_apellido', label: 'Cliente apellido', group: 'Cliente', description: 'Apellido del cliente final.' },
   { source_key: 'cliente_nombre_completo', label: 'Cliente nombre completo', group: 'Cliente', description: 'Nombre y apellido del cliente final.' },
-  { source_key: 'cliente_telefono', label: 'Cliente teléfono', group: 'Cliente', description: 'Teléfono del cliente final.' },
+  { source_key: 'cliente_telefono', label: 'Cliente telefono', group: 'Cliente', description: 'Telefono del cliente final.' },
   { source_key: 'cliente_email', label: 'Cliente email', group: 'Cliente', description: 'Email del cliente final.' },
-  { source_key: 'cliente_direccion', label: 'Cliente dirección', group: 'Cliente', description: 'Dirección del cliente final.' },
+  { source_key: 'cliente_direccion', label: 'Cliente direccion', group: 'Cliente', description: 'Direccion del cliente final.' },
   { source_key: 'cliente_localidad', label: 'Cliente localidad', group: 'Cliente', description: 'Ciudad / localidad del cliente final.' },
   { source_key: 'cliente_maps_url', label: 'Cliente Maps', group: 'Cliente', description: 'URL de Google Maps del cliente.' },
 
-  { source_key: 'vendido_por_rol', label: 'Vendido por rol', group: 'Venta', description: 'Rol del usuario que vendió el portón.' },
-  { source_key: 'vendido_por_nombre', label: 'Vendido por nombre', group: 'Venta', description: 'Nombre del usuario que vendió el portón.' },
-  { source_key: 'vendido_por_username', label: 'Vendido por usuario', group: 'Venta', description: 'Username del usuario que vendió el portón.' },
+  { source_key: 'vendido_por_rol', label: 'Vendido por rol', group: 'Venta', description: 'Rol del usuario que vendio el porton.' },
+  { source_key: 'vendido_por_nombre', label: 'Vendido por nombre', group: 'Venta', description: 'Nombre del usuario que vendio el porton.' },
+  { source_key: 'vendido_por_username', label: 'Vendido por usuario', group: 'Venta', description: 'Username del usuario que vendio el porton.' },
   { source_key: 'vendedor_nombre', label: 'Vendedor nombre', group: 'Venta', description: 'Nombre del vendedor, si la venta la hizo un vendedor.' },
   { source_key: 'distribuidor_nombre', label: 'Distribuidor nombre', group: 'Venta', description: 'Nombre del distribuidor, si la venta la hizo un distribuidor.' },
 
-  { source_key: 'porton_type', label: 'Sistema (label visible)', group: 'Portón', description: 'Tipo/sistema visible, en mayúsculas como el desplegable del cotizador.' },
-  { source_key: 'porton_type_key', label: 'Sistema (key interna)', group: 'Portón', description: 'Key interna, por ejemplo acero_simil_aluminio_clasico.' },
-  { source_key: 'alto_final_mm', label: 'Alto final (mm)', group: 'Portón', description: 'Alto final en milímetros.' },
-  { source_key: 'ancho_final_mm', label: 'Ancho final (mm)', group: 'Portón', description: 'Ancho final en milímetros.' },
-  { source_key: 'cantidad_parantes', label: 'Cantidad parantes', group: 'Portón', description: 'Cantidad de parantes.' },
-  { source_key: 'orientacion_parantes', label: 'Orientación parantes', group: 'Portón', description: 'Orientación de parantes.' },
-  { source_key: 'distribucion_parantes', label: 'Distribución parantes', group: 'Portón', description: 'Distribución de parantes.' },
-  { source_key: 'observaciones_parantes', label: 'Observaciones parantes', group: 'Portón', description: 'Observaciones de parantes.' },
+  { source_key: 'porton_type', label: 'Sistema (label visible)', group: 'Porton', description: 'Tipo/sistema visible, en mayusculas como el desplegable del cotizador.' },
+  { source_key: 'porton_type_key', label: 'Sistema (key interna)', group: 'Porton', description: 'Key interna, por ejemplo acero_simil_aluminio_clasico.' },
+  { source_key: 'alto_final_mm', label: 'Alto final (mm)', group: 'Porton', description: 'Alto final en milimetros.' },
+  { source_key: 'ancho_final_mm', label: 'Ancho final (mm)', group: 'Porton', description: 'Ancho final en milimetros.' },
+  { source_key: 'cantidad_parantes', label: 'Cantidad parantes', group: 'Porton', description: 'Cantidad de parantes.' },
+  { source_key: 'orientacion_parantes', label: 'Orientacion parantes', group: 'Porton', description: 'Orientacion de parantes.' },
+  { source_key: 'distribucion_parantes', label: 'Distribucion parantes', group: 'Porton', description: 'Distribucion de parantes.' },
+  { source_key: 'observaciones_parantes', label: 'Observaciones parantes', group: 'Porton', description: 'Observaciones de parantes.' },
 
-  { source_key: 'tolerance_percent', label: 'Tolerancia %', group: 'Métricas', description: 'Tolerancia porcentual final aplicada.' },
-  { source_key: 'tolerance_amount', label: 'Tolerancia importe', group: 'Métricas', description: 'Tolerancia monetaria aplicada.' },
-  { source_key: 'difference_amount', label: 'Diferencia final', group: 'Métricas', description: 'Diferencia final calculada.' },
-  { source_key: 'absorbed_by_company', label: 'Absorbido por empresa', group: 'Métricas', description: 'true / false.' },
-  { source_key: 'final_amount_to_charge', label: 'Importe final a cobrar', group: 'Métricas', description: 'Monto final de la NV.' },
+  { source_key: 'tolerance_percent', label: 'Tolerancia %', group: 'Metricas', description: 'Tolerancia porcentual final aplicada.' },
+  { source_key: 'tolerance_amount', label: 'Tolerancia importe', group: 'Metricas', description: 'Tolerancia monetaria aplicada.' },
+  { source_key: 'difference_amount', label: 'Diferencia final', group: 'Metricas', description: 'Diferencia final calculada.' },
+  { source_key: 'absorbed_by_company', label: 'Absorbido por empresa', group: 'Metricas', description: 'true / false.' },
+  { source_key: 'final_amount_to_charge', label: 'Importe final a cobrar', group: 'Metricas', description: 'Monto final de la NV.' },
 ];
+
+async function readJsonResponse(res) {
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Error HTTP ${res.status}: ${text}`);
+  }
+  return res.json();
+}
 
 async function saveFormulaToBackend(columnName, expression, authHeader) {
   const res = await fetch(`${API_BASE_URL}/api/formulas`, {
@@ -71,34 +79,21 @@ async function saveFormulaToBackend(columnName, expression, authHeader) {
     headers: { 'Content-Type': 'application/json', ...(authHeader || {}) },
     body: JSON.stringify({ column_name: columnName, expression }),
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Error HTTP ${res.status}: ${text}`);
-  }
-  return res.json();
+  return readJsonResponse(res);
 }
 
 async function fetchMeasurementSourceCatalog(authHeader) {
   const res = await fetch(`${API_BASE_URL}/api/measurement-source-catalog`, {
     headers: { ...(authHeader || {}) },
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Error HTTP ${res.status}: ${text}`);
-  }
-  return res.json();
+  return readJsonResponse(res);
 }
 
 async function fetchPropertyMappings(authHeader) {
   const res = await fetch(`${API_BASE_URL}/api/property-mappings`, {
     headers: { ...(authHeader || {}) },
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Error HTTP ${res.status}: ${text}`);
-  }
-  return res.json();
+  return readJsonResponse(res);
 }
 
 async function savePropertyMappingToBackend(payload, authHeader) {
@@ -107,25 +102,52 @@ async function savePropertyMappingToBackend(payload, authHeader) {
     headers: { 'Content-Type': 'application/json', ...(authHeader || {}) },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Error HTTP ${res.status}: ${text}`);
-  }
-  return res.json();
+  return readJsonResponse(res);
 }
 
 async function fetchPropertyValueOptions(property, authHeader) {
   const params = new URLSearchParams();
   params.set('property', property);
-
   const res = await fetch(`${API_BASE_URL}/api/property-value-options?${params.toString()}`, {
     headers: { ...(authHeader || {}) },
   });
+  return readJsonResponse(res);
+}
+
+async function fetchPreProductionRowByNv(nv, authHeader, { syncFromIntegrator = false } = {}) {
+  const nvValue = String(nv || '').trim();
+  if (!nvValue) return null;
+
+  const params = new URLSearchParams();
+  params.set('nv', nvValue);
+
+  if (syncFromIntegrator) {
+    try {
+      await fetch(`${API_BASE_URL}/api/pre-produccion?${params.toString()}`, {
+        headers: { ...(authHeader || {}) },
+      });
+    } catch (err) {
+      console.warn('No se pudo refrescar la fila desde integrador antes de comparar:', err);
+    }
+  }
+
+  let res = await fetch(`${API_BASE_URL}/api/pre-produccion-valores?${params.toString()}`, {
+    headers: { ...(authHeader || {}) },
+  });
+
+  if (!res.ok) {
+    res = await fetch(`${API_BASE_URL}/api/pre-produccion?${params.toString()}`, {
+      headers: { ...(authHeader || {}) },
+    });
+  }
+
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Error HTTP ${res.status}: ${text}`);
   }
-  return res.json();
+
+  const data = await res.json();
+  return Array.isArray(data?.rows) && data.rows.length ? data.rows[0] : null;
 }
 
 function getResolverLabel(value) {
@@ -145,6 +167,68 @@ function buildProductionSearchText(item = {}, draft = {}) {
   return [item?.group, item?.label, item?.source_key, item?.description, draft?.target_property]
     .join(' ')
     .toLowerCase();
+}
+
+function getCompareRawValue(row, key) {
+  const property = String(key || '').trim();
+  if (!row || !property) return undefined;
+
+  const containers = [
+    row,
+    row?.mapped_from_presupuestador,
+    row?.presupuestador,
+    row?.source_values,
+    row?.production_values,
+    row?.data,
+    row?.raw,
+  ];
+
+  for (const container of containers) {
+    if (container && typeof container === 'object' && Object.prototype.hasOwnProperty.call(container, property)) {
+      return container[property];
+    }
+  }
+
+  return undefined;
+}
+
+function formatCompareValue(value) {
+  if (value === undefined || value === null || value === '') return '-';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function normalizeCompareValue(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'object') return formatCompareValue(value).trim();
+  return String(value).trim();
+}
+
+function buildComparisonStatus({ targetProperty, integratorRow, budgetRow, integratorValue, budgetValue }) {
+  if (!targetProperty) return { label: 'Sin asignar', detail: 'Elegi una propiedad del integrador para poder comparar.' };
+  if (!integratorRow && !budgetRow) return { label: 'Sin comparar', detail: 'Carga los NV de comparacion.' };
+  if (!integratorRow) return { label: 'Falta integrador', detail: 'No hay fila cargada para el NV del integrador.' };
+  if (!budgetRow) return { label: 'Falta presupuestador', detail: 'No hay fila cargada para el NV del presupuestador.' };
+
+  const integratorNorm = normalizeCompareValue(integratorValue);
+  const budgetNorm = normalizeCompareValue(budgetValue);
+
+  if (!integratorNorm && !budgetNorm) return { label: 'Ambos vacios', detail: 'Ambos valores estan vacios.' };
+  if (integratorNorm === budgetNorm) return { label: 'Coincide', detail: 'El valor del integrador coincide con el del presupuestador.' };
+  return {
+    label: 'Diferente',
+    detail: `Integrador: ${formatCompareValue(integratorValue)} / Presupuestador: ${formatCompareValue(budgetValue)}`,
+  };
+}
+
+function sortText(a, b) {
+  return String(a || '').localeCompare(String(b || ''), 'es');
 }
 
 export default function FormulasPage({ hasData, columns, formulas, permissions, authHeader }) {
@@ -171,6 +255,13 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
   const [productionError, setProductionError] = useState('');
   const [savingProductionKey, setSavingProductionKey] = useState(null);
 
+  const [productionIntegratorNv, setProductionIntegratorNv] = useState('');
+  const [productionBudgetNv, setProductionBudgetNv] = useState('');
+  const [productionIntegratorRow, setProductionIntegratorRow] = useState(null);
+  const [productionBudgetRow, setProductionBudgetRow] = useState(null);
+  const [productionCompareLoading, setProductionCompareLoading] = useState(false);
+  const [productionCompareError, setProductionCompareError] = useState('');
+
   const [valueProperty, setValueProperty] = useState('');
   const [valueOptions, setValueOptions] = useState([]);
   const [valueSelected, setValueSelected] = useState('');
@@ -182,7 +273,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     (mappingRows || []).forEach((row) => {
       if (row?.target_property) set.add(String(row.target_property));
     });
-    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'es'));
+    return Array.from(set).sort(sortText);
   }, [columns, mappingRows]);
 
   const catalogBySection = useMemo(() => {
@@ -225,7 +316,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
         label: row?.source_label || row?.label || key,
         group: row?.source_group || (key.startsWith('section__') ? 'Secciones del presupuesto' : 'Nota de venta'),
         description: row?.source_description || (key.startsWith('section__')
-          ? 'Item elegido en esta sección del presupuesto. Si la sección no participa en la NV, la propiedad asignada queda null.'
+          ? 'Item elegido en esta seccion del presupuesto. Si la seccion no participa en la NV, la propiedad asignada queda null.'
           : 'Campo ya asignado desde Nota de venta.'),
       });
     });
@@ -233,9 +324,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     return Array.from(byKey.values()).sort((a, b) => {
       const aIsSection = String(a?.source_key || '').startsWith('section__') ? 0 : 1;
       const bIsSection = String(b?.source_key || '').startsWith('section__') ? 0 : 1;
-      return aIsSection - bIsSection ||
-        String(a.group || '').localeCompare(String(b.group || ''), 'es') ||
-        String(a.label || a.source_key || '').localeCompare(String(b.label || b.source_key || ''), 'es');
+      return aIsSection - bIsSection || sortText(a.group, b.group) || sortText(a.label || a.source_key, b.label || b.source_key);
     });
   }, [mappingCatalog, mappingRows]);
 
@@ -269,11 +358,10 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
         ]);
 
         if (cancelled) return;
-
         setMappingCatalog(catalogData?.sections || []);
         setMappingRows(mappingsData?.mappings || []);
       } catch (err) {
-        console.error('Error cargando catálogo / mappings:', err);
+        console.error('Error cargando catalogo / mappings:', err);
         if (!cancelled) setMappingError(err.message || 'Error cargando mappings');
       } finally {
         if (!cancelled) setMappingLoading(false);
@@ -353,7 +441,6 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       try {
         const data = await fetchPropertyValueOptions(valueProperty, authHeader);
         if (cancelled) return;
-
         const options = Array.isArray(data?.values) ? data.values : [];
         setValueOptions(options);
         setValueSelected((current) => (
@@ -375,55 +462,6 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     return () => { cancelled = true; };
   }, [authHeader, valueProperty]);
 
-  async function handleLoadSampleRow(e) {
-    e.preventDefault();
-    const nv = nvInput.trim();
-    if (!nv) {
-      setSampleError('Ingresá un NV para probar.');
-      setSampleRow(null);
-      return;
-    }
-
-    setSampleLoading(true);
-    setSampleError('');
-    setSampleRow(null);
-
-    try {
-      const params = new URLSearchParams();
-      params.set('nv', nv);
-
-      await fetch(`${API_BASE_URL}/api/pre-produccion?${params.toString()}`, {
-        headers: { ...(authHeader || {}) },
-      });
-
-      let res = await fetch(`${API_BASE_URL}/api/pre-produccion-valores?${params.toString()}`, {
-        headers: { ...(authHeader || {}) },
-      });
-
-      if (!res.ok) {
-        res = await fetch(`${API_BASE_URL}/api/pre-produccion?${params.toString()}`, {
-          headers: { ...(authHeader || {}) },
-        });
-      }
-
-      if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
-
-      const data = await res.json();
-      if (!data.rows || !data.rows.length) {
-        setSampleError(`No se encontró ningún portón con NV = ${nv}`);
-        setSampleRow(null);
-        return;
-      }
-      setSampleRow(data.rows[0]);
-    } catch (err) {
-      console.error('Error cargando NV de prueba:', err);
-      setSampleError(err.message || 'Error cargando NV de prueba');
-      setSampleRow(null);
-    } finally {
-      setSampleLoading(false);
-    }
-  }
-
   const { compiledDrafts, compileErrors } = useMemo(() => {
     const compiled = {};
     const errors = {};
@@ -444,13 +482,43 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
         );
         compiled[col] = fn;
       } catch (e) {
-        console.error(`Error compilando fórmula para ${col}:`, e);
+        console.error(`Error compilando formula para ${col}:`, e);
         errors[col] = 'Error de sintaxis';
       }
     }
 
     return { compiledDrafts: compiled, compileErrors: errors };
   }, [drafts]);
+
+  async function handleLoadSampleRow(e) {
+    e.preventDefault();
+    const nv = nvInput.trim();
+    if (!nv) {
+      setSampleError('Ingresa un NV para probar.');
+      setSampleRow(null);
+      return;
+    }
+
+    setSampleLoading(true);
+    setSampleError('');
+    setSampleRow(null);
+
+    try {
+      const row = await fetchPreProductionRowByNv(nv, authHeader, { syncFromIntegrator: true });
+      if (!row) {
+        setSampleError(`No se encontro ningun porton con NV = ${nv}`);
+        setSampleRow(null);
+        return;
+      }
+      setSampleRow(row);
+    } catch (err) {
+      console.error('Error cargando NV de prueba:', err);
+      setSampleError(err.message || 'Error cargando NV de prueba');
+      setSampleRow(null);
+    } finally {
+      setSampleLoading(false);
+    }
+  }
 
   function getPrePostForColumn(col) {
     if (!sampleRow) return { pre: '', post: '' };
@@ -469,13 +537,12 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
 
     function evalCol(c) {
       if (Object.prototype.hasOwnProperty.call(cache, c)) return cache[c];
-
       if (visiting.has(c)) {
-        console.warn('Dependencia circular de fórmulas (FormulasPage) en:', c);
+        console.warn('Dependencia circular de formulas en:', c);
         return sampleRow[c];
       }
-      visiting.add(c);
 
+      visiting.add(c);
       const rawVal = sampleRow[c];
       const colFn = compiledDrafts[c];
 
@@ -510,7 +577,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       try {
         result = colFn(proxyRow);
       } catch (e) {
-        console.error(`Error evaluando fórmula (FormulasPage) para ${c}:`, e);
+        console.error(`Error evaluando formula para ${c}:`, e);
         result = rawVal;
       }
 
@@ -519,15 +586,14 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       return result;
     }
 
-    const r = evalCol(col);
-    const post = r === null || r === undefined || Number.isNaN(r) ? '' : String(r);
-
+    const result = evalCol(col);
+    const post = result === null || result === undefined || Number.isNaN(result) ? '' : String(result);
     return { pre, post };
   }
 
   async function handleSaveColumnFormula(col) {
     if (!canEditFormulas) {
-      window.alert('No tenés permisos para editar fórmulas.');
+      window.alert('No tenes permisos para editar formulas.');
       return;
     }
 
@@ -551,32 +617,27 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
           `
         );
       } catch (e) {
-        console.error('Error de sintaxis en fórmula:', e);
-        window.alert('La fórmula tiene un error de sintaxis y no se guardó:\n\n' + (e.message || String(e)));
+        console.error('Error de sintaxis en formula:', e);
+        window.alert('La formula tiene un error de sintaxis y no se guardo:\n\n' + (e.message || String(e)));
         return;
       }
     }
 
     const msg = prev
-      ? `La columna "${col}" tiene actualmente la fórmula:\n\n${prev || '(sin fórmula)'}\n\n¿Querés reemplazarla por?\n\n${
-          draft || '(sin fórmula, usar valor original)'
-        }`
-      : `¿Querés aplicar esta fórmula a la columna "${col}"?\n\n${
-          draft || '(sin fórmula, usar valor original)'
-        }`;
+      ? `La columna "${col}" tiene actualmente la formula:\n\n${prev || '(sin formula)'}\n\nQueres reemplazarla por?\n\n${draft || '(sin formula, usar valor original)'}`
+      : `Queres aplicar esta formula a la columna "${col}"?\n\n${draft || '(sin formula, usar valor original)'}`;
 
-    const ok = window.confirm(msg);
-    if (!ok) return;
+    if (!window.confirm(msg)) return;
 
     setSavingCol(col);
     setSaveError('');
     try {
       await saveFormulaToBackend(col, draft, authHeader);
-      window.alert(`Fórmula de la columna "${col}" guardada correctamente.\nSe recargará la página.`);
+      window.alert(`Formula de la columna "${col}" guardada correctamente.\nSe recargara la pagina.`);
       window.location.reload();
     } catch (err) {
-      console.error('Error guardando fórmula:', err);
-      setSaveError(err.message || 'Error guardando fórmula');
+      console.error('Error guardando formula:', err);
+      setSaveError(err.message || 'Error guardando formula');
     } finally {
       setSavingCol(null);
     }
@@ -615,9 +676,60 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     }));
   }
 
+  async function handleLoadProductionComparison(e) {
+    e.preventDefault();
+
+    const integratorNv = productionIntegratorNv.trim();
+    const budgetNv = productionBudgetNv.trim();
+
+    if (!integratorNv && !budgetNv) {
+      setProductionCompareError('Ingresa al menos un NV para comparar.');
+      setProductionIntegratorRow(null);
+      setProductionBudgetRow(null);
+      return;
+    }
+
+    setProductionCompareLoading(true);
+    setProductionCompareError('');
+
+    try {
+      const [integratorRow, budgetRow] = await Promise.all([
+        integratorNv
+          ? fetchPreProductionRowByNv(integratorNv, authHeader, { syncFromIntegrator: true })
+          : Promise.resolve(null),
+        budgetNv
+          ? fetchPreProductionRowByNv(budgetNv, authHeader, { syncFromIntegrator: false })
+          : Promise.resolve(null),
+      ]);
+
+      setProductionIntegratorRow(integratorRow);
+      setProductionBudgetRow(budgetRow);
+
+      const warnings = [];
+      if (integratorNv && !integratorRow) warnings.push(`No se encontro integrador NV = ${integratorNv}.`);
+      if (budgetNv && !budgetRow) warnings.push(`No se encontro presupuestador NV = ${budgetNv}.`);
+      setProductionCompareError(warnings.join(' '));
+    } catch (err) {
+      console.error('Error cargando comparacion desde Nota de venta:', err);
+      setProductionCompareError(err.message || 'Error cargando comparacion desde Nota de venta');
+      setProductionIntegratorRow(null);
+      setProductionBudgetRow(null);
+    } finally {
+      setProductionCompareLoading(false);
+    }
+  }
+
+  function handleClearProductionComparison() {
+    setProductionIntegratorNv('');
+    setProductionBudgetNv('');
+    setProductionIntegratorRow(null);
+    setProductionBudgetRow(null);
+    setProductionCompareError('');
+  }
+
   async function handleSaveMapping(targetProperty) {
     if (!canEditFormulas) {
-      window.alert('No tenés permisos para editar mappings.');
+      window.alert('No tenes permisos para editar mappings.');
       return;
     }
 
@@ -625,7 +737,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     if (!draft) return;
 
     if (!draft.source_section || !draft.source_path) {
-      window.alert(`La propiedad "${targetProperty}" necesita sección y campo origen antes de guardar.`);
+      window.alert(`La propiedad "${targetProperty}" necesita seccion y campo origen antes de guardar.`);
       return;
     }
 
@@ -633,11 +745,11 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     const field = section?.fields?.find((item) => item.path === draft.source_path);
 
     const ok = window.confirm(
-      `¿Guardar mapping para "${targetProperty}"?\n\n` +
-      `Sección: ${section?.section_label || draft.source_section}\n` +
+      `Guardar mapping para "${targetProperty}"?\n\n` +
+      `Seccion: ${section?.section_label || draft.source_section}\n` +
       `Campo: ${field?.label || draft.source_path}\n` +
       `Resolver: ${getResolverLabel(draft.resolver)}\n` +
-      `Activo: ${draft.is_active ? 'Sí' : 'No'}`
+      `Activo: ${draft.is_active ? 'Si' : 'No'}`
     );
     if (!ok) return;
 
@@ -649,7 +761,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       setMappingRows((current) => {
         const next = (current || []).filter((item) => String(item.target_property) !== String(targetProperty));
         if (savedRow) next.push(savedRow);
-        next.sort((a, b) => String(a.target_property).localeCompare(String(b.target_property), 'es'));
+        next.sort((a, b) => sortText(a.target_property, b.target_property));
         return next;
       });
     } catch (err) {
@@ -662,7 +774,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
 
   async function handleSaveProductionMapping(sourceKey) {
     if (!canEditFormulas) {
-      window.alert('No tenés permisos para editar asignaciones.');
+      window.alert('No tenes permisos para editar asignaciones.');
       return;
     }
 
@@ -674,10 +786,10 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     const sourceMeta = (productionSourceProperties || []).find((item) => String(item?.source_key || '') === key) || {};
 
     const ok = window.confirm(
-      `¿Guardar asignación desde Nota de venta?\n\n` +
+      `Guardar asignacion desde Nota de venta?\n\n` +
       `Propiedad presupuestador: ${key}\n` +
       `Propiedad integrador: ${selectedTarget || '(sin asignar)'}\n` +
-      `Activo: ${draft.is_active !== false ? 'Sí' : 'No'}`
+      `Activo: ${draft.is_active !== false ? 'Si' : 'No'}`
     );
     if (!ok) return;
 
@@ -717,17 +829,12 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
           return true;
         });
         next.push(savedRow);
-        next.sort((a, b) =>
-          String(getProductionSourceKey(a) || a.target_property || '').localeCompare(
-            String(getProductionSourceKey(b) || b.target_property || ''),
-            'es'
-          )
-        );
+        next.sort((a, b) => sortText(getProductionSourceKey(a) || a.target_property, getProductionSourceKey(b) || b.target_property));
         return next;
       });
     } catch (err) {
-      console.error('Error guardando asignación desde Nota de venta:', err);
-      setProductionError(err.message || 'Error guardando asignación desde Nota de venta');
+      console.error('Error guardando asignacion desde Nota de venta:', err);
+      setProductionError(err.message || 'Error guardando asignacion desde Nota de venta');
     } finally {
       setSavingProductionKey(null);
     }
@@ -743,12 +850,12 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
   return (
     <div className="formulas-page" style={{ display: 'grid', gap: 20 }}>
       <div className="formulas-panel">
-        <h2>Fórmulas por propiedad (con NV de prueba)</h2>
-        {!hasData && <div className="info">Todavía no hay datos cargados para probar fórmulas contra un NV.</div>}
+        <h2>Formulas por propiedad (con NV de prueba)</h2>
+        {!hasData && <div className="info">Todavia no hay datos cargados para probar formulas contra un NV.</div>}
         {hasData && (
           <>
             <p className="hint">
-              Ingresá un NV para ver, por cada propiedad, el valor original y el valor calculado con la fórmula actual / borrador.
+              Ingresa un NV para ver, por cada propiedad, el valor original y el valor calculado con la formula actual / borrador.
             </p>
 
             <form className="field-row" onSubmit={handleLoadSampleRow}>
@@ -762,11 +869,11 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                 />
               </label>
               <button type="submit" className="btn-secondary" disabled={sampleLoading}>
-                {sampleLoading ? 'Cargando...' : 'Cargar portón'}
+                {sampleLoading ? 'Cargando...' : 'Cargar porton'}
               </button>
             </form>
 
-            {!canEditFormulas && <div className="info">Modo solo lectura de fórmulas.</div>}
+            {!canEditFormulas && <div className="info">Modo solo lectura de formulas.</div>}
             {sampleError && <div className="error">⚠ {sampleError}</div>}
             {saveError && <div className="error">⚠ {saveError}</div>}
 
@@ -781,14 +888,14 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                 <thead>
                   <tr>
                     <th>Propiedad</th>
-                    <th>Fórmula (borrador)</th>
+                    <th>Formula (borrador)</th>
                     <th>Valor original (NV de prueba)</th>
-                    <th>Valor con fórmula</th>
-                    {canEditFormulas && <th>Acción</th>}
+                    <th>Valor con formula</th>
+                    {canEditFormulas && <th>Accion</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {columns.map((col) => {
+                  {(columns || []).map((col) => {
                     const expr = drafts[col] ?? '';
                     const { pre, post } = getPrePostForColumn(col);
                     const hasSyntaxError = !!compileErrors[col];
@@ -803,17 +910,12 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                               className="formula-input-header"
                               value={expr}
                               disabled={!canEditFormulas}
-                              onChange={(e) =>
-                                setDrafts((current) => ({
-                                  ...current,
-                                  [col]: e.target.value,
-                                }))
-                              }
+                              onChange={(e) => setDrafts((current) => ({ ...current, [col]: e.target.value }))}
                               onKeyDown={(e) => {
                                 if (!canEditFormulas) return;
                                 handleFormulaKeyDown(e, col);
                               }}
-                              placeholder={canEditFormulas ? 'fórmula' : 'solo lectura'}
+                              placeholder={canEditFormulas ? 'formula' : 'solo lectura'}
                             />
                             {hasSyntaxError && <span className="col-error" title={compileErrors[col]}>⚠</span>}
                           </div>
@@ -828,7 +930,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                               onClick={() => handleSaveColumnFormula(col)}
                               disabled={savingCol === col}
                             >
-                              {savingCol === col ? 'Guardando…' : 'Guardar'}
+                              {savingCol === col ? 'Guardando...' : 'Guardar'}
                             </button>
                           </td>
                         )}
@@ -840,20 +942,20 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
             </div>
 
             {!sampleRow && !sampleError && (
-              <p className="hint">Cargá un NV de prueba para ver los valores “pre” y “post” en cada propiedad.</p>
+              <p className="hint">Carga un NV de prueba para ver los valores pre y post en cada propiedad.</p>
             )}
           </>
         )}
       </div>
 
       <div className="formulas-panel" hidden={HIDE_MEASUREMENT_MAPPINGS_PANEL}>
-        <h2>Asignador de propiedades desde medición</h2>
+        <h2>Asignador de propiedades desde medicion</h2>
         <p className="hint">
-          Acá definís qué dato de la planilla de medición de presupuestador alimenta cada propiedad del integrador.
+          Aca definis que dato de la planilla de medicion de presupuestador alimenta cada propiedad del integrador.
         </p>
 
         {!canEditFormulas && <div className="info">Modo solo lectura de mappings.</div>}
-        {mappingLoading && <div className="info">Cargando catálogo y mappings…</div>}
+        {mappingLoading && <div className="info">Cargando catalogo y mappings...</div>}
         {mappingError && <div className="error">⚠ {mappingError}</div>}
 
         {!mappingLoading && (
@@ -862,11 +964,11 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
               <thead>
                 <tr>
                   <th>Propiedad integrador</th>
-                  <th>Sección origen</th>
+                  <th>Seccion origen</th>
                   <th>Campo origen</th>
                   <th>Resolver</th>
                   <th>Activo</th>
-                  {canEditFormulas && <th>Acción</th>}
+                  {canEditFormulas && <th>Accion</th>}
                 </tr>
               </thead>
               <tbody>
@@ -879,7 +981,6 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                     resolver: 'identity',
                     is_active: true,
                   };
-
                   const currentSection = catalogBySection.get(draft.source_section);
                   const fields = currentSection?.fields || [];
 
@@ -890,15 +991,9 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                         <select
                           value={draft.source_section || ''}
                           disabled={!canEditFormulas}
-                          onChange={(e) => {
-                            const nextSection = e.target.value;
-                            setMappingDraft(targetProperty, {
-                              source_section: nextSection,
-                              source_path: '',
-                            });
-                          }}
+                          onChange={(e) => setMappingDraft(targetProperty, { source_section: e.target.value, source_path: '' })}
                         >
-                          <option value="">Seleccionar…</option>
+                          <option value="">Seleccionar...</option>
                           {(mappingCatalog || []).map((section) => (
                             <option key={section.section_key} value={section.section_key}>
                               {section.section_label}
@@ -912,7 +1007,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                           disabled={!canEditFormulas || !draft.source_section}
                           onChange={(e) => setMappingDraft(targetProperty, { source_path: e.target.value })}
                         >
-                          <option value="">Seleccionar…</option>
+                          <option value="">Seleccionar...</option>
                           {fields.map((field) => (
                             <option key={field.path} value={field.path}>
                               {field.label}
@@ -941,7 +1036,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                             disabled={!canEditFormulas}
                             onChange={(e) => setMappingDraft(targetProperty, { is_active: e.target.checked })}
                           />
-                          {draft.is_active !== false ? 'Sí' : 'No'}
+                          {draft.is_active !== false ? 'Si' : 'No'}
                         </label>
                       </td>
                       {canEditFormulas && (
@@ -952,7 +1047,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                             onClick={() => handleSaveMapping(targetProperty)}
                             disabled={savingMappingCol === targetProperty}
                           >
-                            {savingMappingCol === targetProperty ? 'Guardando…' : 'Guardar'}
+                            {savingMappingCol === targetProperty ? 'Guardando...' : 'Guardar'}
                           </button>
                         </td>
                       )}
@@ -968,25 +1063,66 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       <div className="formulas-panel">
         <h2>Asignador de propiedades desde Nota de venta</h2>
         <p className="hint">
-          Acá asignás cada sección del presupuesto a una propiedad del integrador. El valor será el item elegido en esa sección; si la sección no participa en la NV, la propiedad asignada se escribirá como null.
+          Aca asignas cada seccion del presupuesto a una propiedad del integrador. Tambien podes cargar un NV del integrador y otro del presupuestador para comparar, en la misma tabla, si la asignacion quedaria bien.
         </p>
 
         {!canEditFormulas && <div className="info">Modo solo lectura de asignaciones.</div>}
-        {mappingLoading && <div className="info">Cargando asignaciones…</div>}
+        {mappingLoading && <div className="info">Cargando asignaciones...</div>}
         {productionError && <div className="error">⚠ {productionError}</div>}
+        {productionCompareError && <div className="error">⚠ {productionCompareError}</div>}
+
+        <form
+          className="field-row"
+          onSubmit={handleLoadProductionComparison}
+          style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}
+        >
+          <label style={{ minWidth: 220 }}>
+            NV integrador
+            <br />
+            <input
+              type="text"
+              value={productionIntegratorNv}
+              onChange={(e) => setProductionIntegratorNv(e.target.value)}
+              placeholder="Ej: 1019"
+            />
+          </label>
+          <label style={{ minWidth: 220 }}>
+            NV presupuestador
+            <br />
+            <input
+              type="text"
+              value={productionBudgetNv}
+              onChange={(e) => setProductionBudgetNv(e.target.value)}
+              placeholder="Ej: 5056"
+            />
+          </label>
+          <button type="submit" className="btn-secondary" disabled={productionCompareLoading}>
+            {productionCompareLoading ? 'Cargando...' : 'Cargar comparacion'}
+          </button>
+          <button type="button" className="btn-secondary" onClick={handleClearProductionComparison} disabled={productionCompareLoading}>
+            Limpiar
+          </button>
+        </form>
+
+        {(productionIntegratorRow || productionBudgetRow) && (
+          <p className="hint">
+            Comparando {productionIntegratorRow ? `integrador NV ${productionIntegratorRow.NV || productionIntegratorNv}` : 'integrador sin cargar'} contra{' '}
+            {productionBudgetRow ? `presupuestador NV ${productionBudgetRow.NV || productionBudgetNv}` : 'presupuestador sin cargar'}.
+          </p>
+        )}
 
         <div
           className="field-row"
           style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}
         >
           <label style={{ minWidth: 360, flex: 1 }}>
-            Buscar sección / propiedad origen
+            Buscar seccion / propiedad origen
             <br />
             <input
               type="text"
               value={productionSearch}
               onChange={(e) => setProductionSearch(e.target.value)}
-              placeholder="Buscar por sección, item origen o propiedad destino…"
+              placeholder="Buscar por seccion, item origen o propiedad destino..."
               style={{ width: '100%' }}
             />
           </label>
@@ -1001,26 +1137,38 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
               <thead>
                 <tr>
                   <th>Grupo</th>
-                  <th>Sección / propiedad presupuestador</th>
-                  <th>Descripción</th>
+                  <th>Seccion / propiedad presupuestador</th>
+                  <th>Descripcion</th>
                   <th>Propiedad integrador</th>
+                  <th>Valor integrador</th>
+                  <th>Valor presupuestador</th>
+                  <th>Comparacion</th>
                   <th>Activo</th>
-                  {canEditFormulas && <th>Acción</th>}
+                  {canEditFormulas && <th>Accion</th>}
                 </tr>
               </thead>
               <tbody>
                 {productionFilteredSourceProperties.map((item) => {
                   const sourceKey = String(item?.source_key || '');
                   const draft = productionDrafts[sourceKey] || { target_property: '', is_active: true };
+                  const integratorValue = getCompareRawValue(productionIntegratorRow, draft.target_property);
+                  const budgetValue = getCompareRawValue(productionBudgetRow, sourceKey);
+                  const compareStatus = buildComparisonStatus({
+                    targetProperty: draft.target_property,
+                    integratorRow: productionIntegratorRow,
+                    budgetRow: productionBudgetRow,
+                    integratorValue,
+                    budgetValue,
+                  });
 
                   return (
                     <tr key={`production-${sourceKey}`}>
-                      <td>{item?.group || '—'}</td>
+                      <td>{item?.group || '-'}</td>
                       <td>
                         <div style={{ fontWeight: 700 }}>{item?.label || sourceKey}</div>
                         <div className="hint" style={{ margin: 0 }}>{sourceKey}</div>
                       </td>
-                      <td>{item?.description || '—'}</td>
+                      <td>{item?.description || '-'}</td>
                       <td>
                         <select
                           value={draft.target_property || ''}
@@ -1036,6 +1184,19 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                         </select>
                       </td>
                       <td>
+                        <div style={{ fontWeight: 700 }}>{formatCompareValue(integratorValue)}</div>
+                        <div className="hint" style={{ margin: 0 }}>
+                          {draft.target_property ? `Campo: ${draft.target_property}` : 'Sin propiedad destino'}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 700 }}>{formatCompareValue(budgetValue)}</div>
+                        <div className="hint" style={{ margin: 0 }}>Origen: {sourceKey || '-'}</div>
+                      </td>
+                      <td>
+                        <span title={compareStatus.detail} style={{ fontWeight: 700 }}>{compareStatus.label}</span>
+                      </td>
+                      <td>
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                           <input
                             type="checkbox"
@@ -1043,7 +1204,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                             disabled={!canEditFormulas}
                             onChange={(e) => setProductionDraft(sourceKey, { is_active: e.target.checked })}
                           />
-                          {draft.is_active !== false ? 'Sí' : 'No'}
+                          {draft.is_active !== false ? 'Si' : 'No'}
                         </label>
                       </td>
                       {canEditFormulas && (
@@ -1054,7 +1215,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                             onClick={() => handleSaveProductionMapping(sourceKey)}
                             disabled={savingProductionKey === sourceKey}
                           >
-                            {savingProductionKey === sourceKey ? 'Guardando…' : 'Guardar'}
+                            {savingProductionKey === sourceKey ? 'Guardando...' : 'Guardar'}
                           </button>
                         </td>
                       )}
@@ -1070,7 +1231,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       <div className="formulas-panel">
         <h2>Valores</h2>
         <p className="hint">
-          Elegí una propiedad del integrador para ver qué valores distintos existen hoy en la base.
+          Elegi una propiedad del integrador para ver que valores distintos existen hoy en la base.
         </p>
 
         <div
@@ -1087,7 +1248,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
                 setValueSelected('');
               }}
             >
-              <option value="">Seleccionar…</option>
+              <option value="">Seleccionar...</option>
               {targetProperties.map((property) => (
                 <option key={`value-property-${property}`} value={property}>
                   {property}
@@ -1106,11 +1267,11 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
             >
               <option value="">
                 {!valueProperty
-                  ? 'Seleccionar propiedad…'
+                  ? 'Seleccionar propiedad...'
                   : valueLoading
-                  ? 'Cargando…'
+                  ? 'Cargando...'
                   : valueOptions.length
-                  ? 'Seleccionar…'
+                  ? 'Seleccionar...'
                   : 'Sin valores disponibles'}
               </option>
               {valueOptions.map((item) => {
