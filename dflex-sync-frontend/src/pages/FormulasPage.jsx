@@ -156,7 +156,7 @@ function getResolverLabel(value) {
 }
 
 function isProductionMapping(row = {}) {
-  return row?.source_section === PRODUCTION_SOURCE_SECTION || !!row?.source_key;
+  return row?.source_section === PRODUCTION_SOURCE_SECTION;
 }
 
 function getProductionSourceKey(row = {}) {

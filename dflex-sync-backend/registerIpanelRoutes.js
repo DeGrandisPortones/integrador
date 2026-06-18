@@ -780,7 +780,41 @@ function registerIpanelRoutes(app) {
     }
   });
 
-  console.log('[ipanel] Rutas registradas: SQL + productos + DescripcionSimple + blocklist + sync');
+  app.get('/api/ipanel/presupuestador', async (req, res) => {
+    try {
+      const pgPool = getIpanelPgPool();
+      const { rows } = await pgPool.query(`
+        SELECT id, partida, nv, fecha_nv, fecha_plan_entrega, descripcion, descripcion_simple, data, updated_at
+        FROM public.preproduccion_valores_ipanels
+        WHERE source = 'Presupuestador'
+        ORDER BY nv DESC, id DESC
+        LIMIT 1000
+      `);
+
+      const mapped = (rows || []).map((r) => {
+        const d = r.data && typeof r.data === 'object' ? r.data : {};
+        return {
+          ...d,
+          _id: r.id,
+          partida: r.partida,
+          nv: r.nv,
+          fecha_nv: r.fecha_nv,
+          fecha_plan_entrega: r.fecha_plan_entrega,
+          descripcion: r.descripcion || d.descripcion || d.producto_descripcion || null,
+          descripcion_simple: r.descripcion_simple,
+          updated_at: r.updated_at,
+          source: 'Presupuestador',
+        };
+      });
+
+      return res.json({ rows: mapped });
+    } catch (err) {
+      console.error('[ipanel] Error leyendo filas de Presupuestador:', err);
+      return res.status(500).json({ error: 'Error leyendo ipanels del Presupuestador', details: err?.message || String(err) });
+    }
+  });
+
+  console.log('[ipanel] Rutas registradas: SQL + productos + DescripcionSimple + blocklist + sync + presupuestador');
 }
 
 function patchExpress() {

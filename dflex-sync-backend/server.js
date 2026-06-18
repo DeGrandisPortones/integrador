@@ -518,7 +518,7 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
 
   let existing = {};
   try {
-    const r = await supabasePool.query('SELECT data FROM preproduccion_valores WHERE nv = $1 LIMIT 1', [nvVal]);
+    const r = await supabasePool.query('SELECT data FROM preproduccion_valores WHERE nv = $1 AND nv_tipo = $2 LIMIT 1', [nvVal, 'NV']);
     existing = r?.rows?.[0]?.data || {};
   } catch {
     existing = {};
@@ -551,14 +551,14 @@ async function upsertPreproduccionValoresFillDerived(rawRow, compiled) {
 
   await supabasePool.query(
     `
-      INSERT INTO preproduccion_valores (id, nv, data)
+      INSERT INTO preproduccion_valores (nv, nv_tipo, data)
       VALUES ($1, $2, $3::jsonb)
-      ON CONFLICT (nv)
+      ON CONFLICT (nv, nv_tipo)
       DO UPDATE SET
         data = EXCLUDED.data,
         updated_at = now()
     `,
-    [idVal, nvVal, JSON.stringify(payload)]
+    [nvVal, 'NV', JSON.stringify(payload)]
   );
 }
 
@@ -627,8 +627,8 @@ async function getPreProduccionValoresRows({ nv, partida, fecha_envio_produccion
   // traemos baseRows por esos NV (sin exigir que el base tenga la fecha).
   // ======================================================
 
-  let sqlText = 'SELECT nv, data FROM preproduccion_valores';
-  const where = [];
+  let sqlText = 'SELECT nv, nv_tipo, data FROM preproduccion_valores';
+  const where = ["nv_tipo != 'INV'"];
   const params = [];
 
   if (nv) {
@@ -666,7 +666,7 @@ async function getPreProduccionValoresRows({ nv, partida, fecha_envio_produccion
   const { rows: overlayRaw } = await supabasePool.query(sqlText, params);
   const overlayRows = (overlayRaw || []).map((r) => {
     const obj = r?.data && typeof r.data === 'object' ? r.data : {};
-    return { ...obj, NV: r.nv };
+    return { ...obj, NV: r.nv, NV_TIPO: r.nv_tipo || 'NV' };
   });
 
   // --- baseRows ---
@@ -706,29 +706,51 @@ async function getPreProduccionValoresRows({ nv, partida, fecha_envio_produccion
     baseRows = await getPreProduccionSqlRowsFromSupabase({ nv, partida });
   }
 
-  const overlayByNv = new Map();
+  // Overlay tipo='NV' se fusiona con el base del SQL Server para el mismo NV.
+  // Overlay de otros tipos (ONV, INV, PLNV, PNV) son filas independientes sin base.
+  const overlayByNv = new Map(); // solo tipo='NV', clave: String(nv)
+  const overlayNonNv = [];      // tipo != 'NV'
+
   for (const r of overlayRows) {
-    const key = r?.NV !== undefined && r?.NV !== null ? String(r.NV) : undefined;
-    if (key) overlayByNv.set(key, r);
+    const nvKey = r?.NV !== undefined && r?.NV !== null ? String(r.NV) : undefined;
+    if (!nvKey) continue;
+    if ((r.NV_TIPO || 'NV') === 'NV') {
+      overlayByNv.set(nvKey, r);
+    } else {
+      overlayNonNv.push(r);
+    }
   }
 
+  // Fusionar base con overlay tipo='NV'
   const merged = baseRows.map((base) => {
     const key = base?.NV !== undefined && base?.NV !== null ? String(base.NV) : undefined;
     const over = key ? overlayByNv.get(key) : null;
-    return over ? { ...base, ...over } : base;
+    return over ? { ...base, ...over } : { ...base, NV_TIPO: 'NV' };
   });
 
+  // Agregar overlay tipo='NV' que no tienen fila base en SQL Server
   for (const over of overlayRows) {
-    const key = over?.NV !== undefined && over?.NV !== null ? String(over.NV) : undefined;
-    if (!key) continue;
-    const hasBase = baseRows.some((b) => b?.NV !== undefined && b?.NV !== null && String(b.NV) === key);
+    const nvKey = over?.NV !== undefined && over?.NV !== null ? String(over.NV) : undefined;
+    if (!nvKey || (over.NV_TIPO || 'NV') !== 'NV') continue;
+    const hasBase = baseRows.some((b) => b?.NV !== undefined && b?.NV !== null && String(b.NV) === nvKey);
     if (!hasBase) merged.push(over);
   }
+
+  // Agregar filas de otros tipos (ONV, INV, PLNV, PNV) — siempre separadas
+  merged.push(...overlayNonNv);
 
   merged.sort((a, b) => {
     const na = parseInt(a?.NV, 10);
     const nb = parseInt(b?.NV, 10);
-    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    if (Number.isFinite(na) && Number.isFinite(nb)) {
+      if (na !== nb) return na - nb;
+      // mismo número: NV primero, luego el resto alfabético
+      const ta = a?.NV_TIPO || 'NV';
+      const tb = b?.NV_TIPO || 'NV';
+      if (ta === 'NV' && tb !== 'NV') return -1;
+      if (ta !== 'NV' && tb === 'NV') return 1;
+      return ta.localeCompare(tb);
+    }
     return String(a?.NV || '').localeCompare(String(b?.NV || ''));
   });
 
@@ -1835,14 +1857,14 @@ app.post(
 
         await client.query(
           `
-            INSERT INTO preproduccion_valores (id, nv, data)
+            INSERT INTO preproduccion_valores (nv, nv_tipo, data)
             VALUES ($1, $2, $3::jsonb)
-            ON CONFLICT (nv)
+            ON CONFLICT (nv, nv_tipo)
             DO UPDATE SET
               data = COALESCE(preproduccion_valores.data, '{}'::jsonb) || EXCLUDED.data,
               updated_at = now()
           `,
-          [effectiveId, nvParsed, JSON.stringify(changes)]
+          [nvParsed, 'NV', JSON.stringify(changes)]
         );
 
         applied += 1;

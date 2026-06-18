@@ -1,59 +1,137 @@
 /* src/index.css */
 
+/* ===== DESIGN TOKENS ===== */
 :root {
+  --color-primary:        #2563eb;
+  --color-primary-hover:  #1d4ed8;
+  --color-primary-light:  #dbeafe;
+  --color-success:        #16a34a;
+  --color-success-hover:  #15803d;
+  --color-success-light:  #dcfce7;
+  --color-danger:         #dc2626;
+  --color-danger-light:   #fee2e2;
+  --color-warning-light:  #fef9c3;
+
+  --color-bg:           #f0f2f5;
+  --color-surface:      #ffffff;
+  --color-surface-2:    #f8fafc;
+  --color-surface-3:    #f1f5f9;
+  --color-border:       #e2e8f0;
+  --color-border-strong:#cbd5e1;
+
+  --color-text:         #0f172a;
+  --color-text-2:       #475569;
+  --color-text-3:       #94a3b8;
+
+  --radius-sm:    4px;
+  --radius:       8px;
+  --radius-lg:    12px;
+  --radius-pill:  999px;
+
+  --shadow-xs:  0 1px 2px rgba(15,23,42,.06);
+  --shadow-sm:  0 1px 3px rgba(15,23,42,.08), 0 1px 2px rgba(15,23,42,.04);
+  --shadow-md:  0 4px 12px rgba(15,23,42,.10), 0 2px 4px rgba(15,23,42,.05);
+  --shadow-lg:  0 8px 20px rgba(15,23,42,.12), 0 3px 6px rgba(15,23,42,.06);
+
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color-scheme: light;
 }
 
+/* ===== BASE ===== */
+*, *::before, *::after { box-sizing: border-box; }
+
 body {
   margin: 0;
   padding: 0;
-  background: #f4f4f7;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
+/* ===== LAYOUT ===== */
 .page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 16px;
-  box-sizing: border-box;
+  padding: 0;
 }
 
-/* ===== HEADER / NAV / SEARCH ===== */
-
-.header {
+/* App shell (header + content) */
+.app-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  padding: 0 20px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: 0;
+  min-height: 52px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.header h1 {
-  margin: 0;
-  font-size: 20px;
+.app-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+  margin-right: 20px;
+  white-space: nowrap;
 }
 
+.content {
+  flex: 1;
+  padding: 20px 20px 32px;
+}
+
+/* ===== NAV / TABS ===== */
 .nav {
   display: flex;
-  gap: 8px;
-  margin: 4px 0 8px;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1;
 }
 
 .nav-btn {
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #d1d5db;
-  background: #e5e7eb;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-2);
   cursor: pointer;
   font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms, color 120ms, border-color 120ms;
+  white-space: nowrap;
+}
+
+.nav-btn:hover:not(.active) {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  border-color: var(--color-border);
 }
 
 .nav-btn.active {
-  background: #2563eb;
-  color: white;
-  border-color: #2563eb;
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  box-shadow: 0 1px 4px rgba(37,99,235,.3);
 }
 
+/* ===== USER / AUTH AREA ===== */
+.auth-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+
+/* ===== SEARCH FORM ===== */
 .search-form {
   display: flex;
   flex-wrap: wrap;
@@ -62,218 +140,338 @@ body {
 }
 
 .search-form input {
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #d1d5db;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: 13px;
+  color: var(--color-text);
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+.search-form input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
 }
 
 .search-form button {
-  padding: 6px 10px;
+  padding: 6px 14px;
   border: none;
-  background: #2563eb;
-  color: white;
-  border-radius: 4px;
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms;
 }
 
-.search-form button[disabled] {
-  opacity: 0.6;
+.search-form button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.search-form button:disabled {
+  opacity: 0.55;
   cursor: default;
 }
 
-/* ===== MENSAJES ===== */
+/* ===== BUTTONS ===== */
 
+/* Primary */
+button[type="submit"],
+button:not(.nav-btn):not(.btn-secondary):not(.btn-small):not(.save-btn) {
+  padding: 7px 16px;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms, box-shadow 120ms;
+}
+
+button[type="submit"]:hover:not(:disabled),
+button:not(.nav-btn):not(.btn-secondary):not(.btn-small):not(.save-btn):hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  box-shadow: 0 2px 6px rgba(37,99,235,.25);
+}
+
+button:disabled { opacity: 0.55; cursor: default; }
+
+/* Secondary */
+.btn-secondary {
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms, border-color 120ms;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-3);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-secondary:disabled { opacity: 0.55; cursor: default; }
+
+/* Save / green action */
+.save-btn {
+  padding: 7px 16px;
+  border-radius: var(--radius-pill);
+  border: none;
+  cursor: pointer;
+  background: var(--color-success);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 120ms, box-shadow 120ms;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: var(--color-success-hover);
+  box-shadow: 0 2px 6px rgba(22,163,74,.25);
+}
+
+.save-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* Small action button in rows */
+.btn-small {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: background 100ms, border-color 100ms;
+}
+
+.btn-small:hover:not(:disabled) {
+  background: var(--color-surface-3);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-small:disabled { opacity: 0.55; cursor: default; }
+
+/* ===== FORM INPUTS (global) ===== */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: 13px;
+  color: var(--color-text);
+  font-family: inherit;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+}
+
+select { cursor: pointer; }
+
+/* ===== MESSAGES ===== */
 .error {
-  color: #b91c1c;
+  color: var(--color-danger);
   margin: 4px 0 8px;
   font-size: 13px;
+  font-weight: 500;
 }
 
 .info {
   margin-bottom: 8px;
   font-size: 13px;
+  color: var(--color-text-2);
 }
 
-/* ===== BOTON GUARDAR CAMBIOS ===== */
-
-.save-btn {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: none;
-  cursor: pointer;
-  background: #16a34a;
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 500;
+.hint {
+  font-size: 11px;
+  color: var(--color-text-3);
 }
 
-.save-btn:hover {
-  background: #15803d;
+.hint-small {
+  font-size: 11px;
+  color: var(--color-text-3);
 }
 
-/* ===== TABLA GENERAL ===== */
+/* ===== BADGES ===== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 4px;
+  white-space: nowrap;
+}
 
+.badge-ok    { background: var(--color-success-light); color: #15803d; }
+.badge-warn  { background: var(--color-warning-light); color: #b45309; }
+.badge-error { background: var(--color-danger-light);  color: var(--color-danger); }
+
+/* ===== TABLE ===== */
 .table-wrapper {
-  flex: 1;
-  overflow-x: auto; /* scroll horizontal */
+  overflow-x: auto;
   overflow-y: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: white;
-  max-height: calc(100vh - 200px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  max-height: calc(100vh - 220px);
 }
 
-/* tabla para todas las paginas */
 .data-table {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 12px;
-  table-layout: fixed; /* columnas mas uniformes */
-  min-width: 1400px; /* fuerza scroll horizontal si la pantalla es mas chica */
+  table-layout: fixed;
+  min-width: 1400px;
+  width: 100%;
 }
 
 .data-table th,
 .data-table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid #e5e7eb; /* solo linea horizontal, sin bordes verticales */
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 110px; /* ancho parecido entre columnas */
+  min-width: 100px;
 }
 
-/* columnas muy chicas (ID / NV) un poco mas angostas */
-.data-table th:first-child,
-.data-table td:first-child {
-  min-width: 60px;
-}
-.data-table th:nth-child(2),
-.data-table td:nth-child(2) {
-  min-width: 70px;
-}
+.data-table th:first-child, .data-table td:first-child { min-width: 55px; }
+.data-table th:nth-child(2), .data-table td:nth-child(2) { min-width: 65px; }
 
 .data-table th {
   position: sticky;
   top: 0;
-  background: #f8fafc;
-  z-index: 2;
+  background: var(--color-surface-2);
+  border-bottom: 2px solid var(--color-border-strong);
   font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--color-text-2);
+  text-transform: uppercase;
+  z-index: 2;
 }
 
-/* ===== FILA DE FORMULAS (inputs del header) ===== */
+.data-table tbody tr:hover {
+  background: #f8fafc;
+}
 
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+/* ===== FORMULA INPUT (header row) ===== */
 .formula-input-header {
   width: 100%;
   box-sizing: border-box;
   font-size: 11px;
-  padding: 2px 4px;
-  margin-bottom: 2px;
-  border-radius: 4px;
-  border: 1px solid #d1d5db;
-  background: #f9fafb;
+  padding: 3px 6px;
+  margin-bottom: 3px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
-.col-error {
-  font-size: 11px;
-  color: #b91c1c;
+.formula-input-header:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(37,99,235,.15);
 }
 
-/* ===== CELDAS EDITABLES (tabla principal) ===== */
+.col-error { font-size: 11px; color: var(--color-danger); }
 
+/* ===== EDITABLE CELLS ===== */
 .cell-input {
   width: 100%;
   box-sizing: border-box;
   font-size: 12px;
   padding: 2px 4px;
-  border: none; /* sin borde, aspecto de texto plano */
+  border: none;
   background: transparent;
+  font-family: inherit;
+  color: var(--color-text);
+  border-radius: 3px;
 }
 
 .cell-input:focus {
-  outline: 1px solid rgba(37, 99, 235, 0.35);
-  background: #eff6ff;
+  outline: none;
+  background: var(--color-primary-light);
+  box-shadow: inset 0 0 0 1px rgba(37,99,235,.4);
 }
 
-/* ===== PAGINA IMPORT / FORMULAS ===== */
-
-.import-panel {
-  margin-bottom: 12px;
+/* ===== PANELS / CARDS ===== */
+.formulas-panel {
+  width: 100%;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  padding: 16px 18px 20px;
 }
 
-.import-file-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  margin-top: 8px;
+.formulas-panel h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
 }
 
-.import-file-label input[type='file'] {
-  font-size: 13px;
-}
-
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  margin-right: 6px;
-}
-
-.badge-ok {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.badge-warn {
-  background: #fef9c3;
-  color: #854d0e;
-}
-
-.badge-error {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.hint {
-  font-size: 11px;
-  color: #4b5563;
-}
-
-/* ===== PAGINA DE FORMULAS ===== */
+.formulas-panel .hint { margin: 2px 0 10px; }
 
 .formulas-page {
   display: flex;
   justify-content: stretch;
   align-items: stretch;
   width: 100%;
-  max-width: none;
   margin-top: 8px;
   box-sizing: border-box;
 }
 
-.formulas-panel {
+.formulas-page .table-wrapper {
   width: 100%;
-  max-width: none;
-  background: #ffffff;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-  padding: 12px 14px 16px;
-  box-sizing: border-box;
+  margin-top: 8px;
+  max-height: 60vh;
 }
 
-.formulas-panel h2 {
-  margin: 0 0 4px;
-  font-size: 16px;
+.formulas-page .data-table {
+  min-width: 900px;
 }
 
-.formulas-panel .hint {
-  margin: 2px 0 10px;
-}
+.formulas-page .data-table th:nth-child(2),
+.formulas-page .data-table td:nth-child(2) { white-space: normal; }
 
-/* fila NV de prueba + boton */
+.formulas-page .data-table th:nth-child(1),
+.formulas-page .data-table td:nth-child(1) { min-width: 150px; }
+
+.formulas-page .data-table th:nth-child(2),
+.formulas-page .data-table td:nth-child(2) { min-width: 320px; }
+
+.formulas-page .data-table th:nth-child(3),
+.formulas-page .data-table td:nth-child(3),
+.formulas-page .data-table th:nth-child(4),
+.formulas-page .data-table td:nth-child(4) { min-width: 160px; }
+
+/* ===== FIELD-ROW ===== */
 .field-row {
   display: flex;
   flex-wrap: wrap;
@@ -282,112 +480,9 @@ body {
   margin: 8px 0 6px;
 }
 
-.field-row label {
-  font-size: 13px;
-}
+.field-row label { font-size: 13px; }
 
-.field-row input[type='text'] {
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #d1d5db;
-  font-size: 13px;
-}
-
-/* boton gris para acciones secundarias (Cargar porton) */
-.btn-secondary {
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #d1d5db;
-  background: #f3f4f6;
-  cursor: pointer;
-  font-size: 13px;
-  color: #111827;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #e5e7eb;
-}
-
-.btn-secondary:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* boton chiquito de disco en cada fila */
-.btn-small {
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
-  background: #f9fafb;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.btn-small:hover:not(:disabled) {
-  background: #e5e7eb;
-}
-
-.btn-small:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* tabla de formulas: ocupa todo el ancho disponible y mantiene scroll si hace falta */
-.formulas-page .table-wrapper {
-  width: 100%;
-  margin-top: 8px;
-  max-height: 60vh;
-  box-sizing: border-box;
-}
-
-.formulas-page .data-table {
-  width: 100%;
-  min-width: 900px;
-}
-
-/* Dejo que la formula (columna 2) pueda cortar linea para no generar columnas gigantes */
-.formulas-page .data-table th:nth-child(2),
-.formulas-page .data-table td:nth-child(2) {
-  white-space: normal;
-}
-
-/* Ajusto un poco el ancho relativo de las columnas:
-   1) Propiedad: chico
-   2) Formula: mas ancho
-   3) Pre / 4) Post: medianos
-*/
-.formulas-page .data-table th:nth-child(1),
-.formulas-page .data-table td:nth-child(1) {
-  min-width: 150px;
-}
-
-.formulas-page .data-table th:nth-child(2),
-.formulas-page .data-table td:nth-child(2) {
-  min-width: 320px;
-}
-
-.formulas-page .data-table th:nth-child(3),
-.formulas-page .data-table td:nth-child(3),
-.formulas-page .data-table th:nth-child(4),
-.formulas-page .data-table td:nth-child(4) {
-  min-width: 160px;
-}
-
-/* El input de formula dentro de la tabla de formulas, un poco mas comodo */
-.formulas-page .formula-input-header {
-  font-size: 12px;
-  padding: 4px 6px;
-  background: #f9fafb;
-}
-
-/* mensaje al pie cuando no hay NV de prueba cargado */
-.formulas-page p.hint:last-of-type {
-  margin-top: 10px;
-}
-
-/* ==== Pagina de importacion de Excel ==== */
-
+/* ===== IMPORT PAGE ===== */
 .import-page {
   display: flex;
   flex-direction: column;
@@ -397,24 +492,20 @@ body {
 }
 
 .import-panel {
-  background: #ffffff;
-  border-radius: 8px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
   padding: 16px 18px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
-  border: 1px solid #e5e7eb;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
 }
 
-.import-panel h2 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
-}
+.import-panel h2 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
 
 .import-config {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 10px;
-  margin-bottom: 10px;
+  margin: 10px 0;
 }
 
 .import-field {
@@ -426,27 +517,10 @@ body {
 
 .import-field label {
   font-size: 13px;
-  color: #111827;
+  color: var(--color-text);
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.import-field input,
-.import-field select {
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid #d1d5db;
-  font-size: 13px;
-  background: #f9fafb;
-}
-
-.import-field input:focus,
-.import-field select:focus {
-  outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4);
-  background: #ffffff;
 }
 
 .import-file-label {
@@ -463,75 +537,30 @@ body {
   font-size: 13px;
 }
 
-.hint-small {
-  font-size: 11px;
-  color: #6b7280;
-}
-
-/* Panel resumen de resultados */
 .import-summary {
   margin-top: 8px;
-  background: #ffffff;
-  border-radius: 8px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
   padding: 14px 16px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
 }
 
-.import-summary h2 {
-  margin: 0 0 8px 0;
-  font-size: 15px;
-}
-
-.import-summary h3 {
-  margin-top: 14px;
-  margin-bottom: 6px;
-  font-size: 14px;
-}
-
-/* Badges de resumen */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  margin-right: 6px;
-}
-
-.badge-ok {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.badge-warn {
-  background: #fef9c3;
-  color: #b45309;
-}
-
-.badge-error {
-  background: #fee2e2;
-  color: #b91c1c;
-}
+.import-summary h2 { margin: 0 0 8px; font-size: 15px; }
+.import-summary h3 { margin: 14px 0 6px; font-size: 14px; }
 
 /* ===== LOGIN ===== */
-
 .login-panel {
   max-width: 420px;
-  margin: 40px auto;
-  padding: 22px;
-  background: #ffffff;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-  box-sizing: border-box;
+  margin: 60px auto 0;
+  padding: 28px 24px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
 }
 
-.login-panel h2 {
-  margin: 0 0 10px;
-  font-size: 16px;
-}
+.login-panel h2 { margin: 0 0 16px; font-size: 18px; font-weight: 700; }
 
 .login-form {
   display: flex;
@@ -543,41 +572,49 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: stretch;
-  text-align: left;
   font-size: 13px;
-  color: #111827;
+  font-weight: 500;
+  color: var(--color-text);
 }
 
 .login-input {
   width: 100%;
-  box-sizing: border-box;
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 2px solid #d0d5dd;
-  background: #ffffff;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--color-text);
   outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  transition: border-color 120ms, box-shadow 120ms;
 }
 
 .login-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.18);
 }
 
 .login-input--error {
-  border-color: #ff1a1a;
-  background-color: #fff0f0;
-  box-shadow: 0 0 0 3px rgba(255, 26, 26, 0.25);
+  border-color: var(--color-danger);
+  background: #fff8f8;
+  box-shadow: 0 0 0 3px rgba(220,38,38,.15);
 }
 
 .login-input--success {
-  border-color: #11b981;
-  background-color: #effdf6;
-  box-shadow: 0 0 0 3px rgba(17, 185, 129, 0.22);
+  border-color: var(--color-success);
+  background: #f6fef9;
+  box-shadow: 0 0 0 3px rgba(22,163,74,.15);
 }
 
-.login-input:disabled {
-  opacity: 0.75;
-  cursor: not-allowed;
+.login-input:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* ===== HEADER (legacy, kept for TablePage top area) ===== */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
 }
+
+.header h1 { margin: 0; font-size: 18px; font-weight: 700; }

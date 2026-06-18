@@ -1,6 +1,8 @@
 const SOURCE_APP = 'presupuestador';
 const PRODUCTION_SOURCE_SECTION = 'nota_venta';
 const PRODUCTION_ASSIGNMENTS_TABLE = 'public.presupuestador_production_property_assignments';
+const IPANEL_SOURCE_SECTION = 'nota_venta_inv';
+const IPANEL_ASSIGNMENTS_TABLE = 'public.presupuestador_ipanel_property_assignments';
 
 const BASE_PRODUCTION_SOURCE_PROPERTIES = [
   { source_key: 'nv', label: 'NV', group: 'Referencias', description: 'Número de nota de venta final.' },
@@ -200,9 +202,32 @@ function labelFromSectionSourceKey(sourceKey) {
   return raw ? raw.replace(/\w/g, (m) => m.toUpperCase()) : sourceKey;
 }
 
+function isIpanelAssignmentPayload(payload) {
+  return normalizeText(payload?.source_section) === IPANEL_SOURCE_SECTION;
+}
+
 function isProductionAssignmentPayload(payload) {
   const section = normalizeText(payload?.source_section);
   return section === PRODUCTION_SOURCE_SECTION || !!normalizeText(payload?.source_key);
+}
+
+function mapIpanelAssignmentRow(row, meta = {}) {
+  const sourceKey = normalizeText(row?.source_key || meta?.source_key || meta?.path);
+  return {
+    id: sourceKey ? `inv:${sourceKey}` : null,
+    source_key: sourceKey,
+    target_property: normalizeText(row?.target_property),
+    source_app: SOURCE_APP,
+    source_section: IPANEL_SOURCE_SECTION,
+    source_path: sourceKey,
+    source_label: meta?.label || row?.source_label || sourceKey,
+    source_group: meta?.group || row?.source_group || 'IPanels',
+    source_description: meta?.description || row?.source_description || '',
+    resolver: 'identity',
+    is_active: row?.is_active !== false,
+    created_at: row?.created_at || null,
+    updated_at: row?.updated_at || null,
+  };
 }
 
 function mapProductionAssignmentRow(row, meta = {}) {
@@ -243,6 +268,16 @@ async function ensureMeasurementMappingsTable(pool) {
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${PRODUCTION_ASSIGNMENTS_TABLE} (
+      source_key text PRIMARY KEY,
+      target_property text NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${IPANEL_ASSIGNMENTS_TABLE} (
       source_key text PRIMARY KEY,
       target_property text NULL,
       is_active boolean NOT NULL DEFAULT true,
@@ -351,7 +386,15 @@ async function listProductionPropertyAssignmentsRaw(pool) {
     FROM ${PRODUCTION_ASSIGNMENTS_TABLE}
     ORDER BY source_key ASC
   `);
+  return rows || [];
+}
 
+async function listIpanelPropertyAssignmentsRaw(pool) {
+  const { rows } = await pool.query(`
+    SELECT source_key, target_property, is_active, created_at, updated_at
+    FROM ${IPANEL_ASSIGNMENTS_TABLE}
+    ORDER BY source_key ASC
+  `);
   return rows || [];
 }
 
@@ -363,10 +406,11 @@ async function listProductionPropertyAssignments(pool) {
 async function listMeasurementPropertyMappings(pool) {
   await ensureMeasurementMappingsTable(pool);
 
-  const [legacyRows, productionRowsRaw, productionCatalog] = await Promise.all([
+  const [legacyRows, productionRowsRaw, productionCatalog, ipanelRowsRaw] = await Promise.all([
     listLegacyMeasurementPropertyMappings(pool),
     listProductionPropertyAssignmentsRaw(pool),
     listProductionSourceCatalog(pool),
+    listIpanelPropertyAssignmentsRaw(pool),
   ]);
 
   const productionByKey = new Map();
@@ -375,15 +419,26 @@ async function listMeasurementPropertyMappings(pool) {
     if (!sourceKey) continue;
     productionByKey.set(sourceKey, mapProductionAssignmentRow({ source_key: sourceKey, target_property: '', is_active: true }, field));
   }
-
   for (const row of productionRowsRaw || []) {
     const sourceKey = normalizeText(row?.source_key);
     const meta = productionByKey.get(sourceKey) || {};
     productionByKey.set(sourceKey, mapProductionAssignmentRow(row, meta));
   }
 
+  // IPanel assignments keyed by source_key
+  const ipanelByKey = new Map();
+  for (const row of ipanelRowsRaw || []) {
+    const sourceKey = normalizeText(row?.source_key);
+    if (!sourceKey) continue;
+    ipanelByKey.set(sourceKey, mapIpanelAssignmentRow(row));
+  }
+
   const visibleLegacyRows = (legacyRows || []).filter((row) => row?.source_section !== PRODUCTION_SOURCE_SECTION);
-  return [...visibleLegacyRows, ...Array.from(productionByKey.values())];
+  return [
+    ...visibleLegacyRows,
+    ...Array.from(productionByKey.values()),
+    ...Array.from(ipanelByKey.values()),
+  ];
 }
 
 async function upsertProductionPropertyAssignment(pool, payload) {
@@ -416,8 +471,33 @@ async function upsertProductionPropertyAssignment(pool, payload) {
   return mapProductionAssignmentRow(rows?.[0] || {});
 }
 
+async function upsertIpanelPropertyAssignment(pool, payload) {
+  await ensureMeasurementMappingsTable(pool);
+
+  const sourceKey = normalizeText(payload?.source_key || payload?.source_path);
+  if (!sourceKey) throw new Error('Falta source_key/source_path para asignación INV');
+
+  const targetProperty = normalizeText(payload?.target_property) || null;
+  const isActive = payload?.is_active !== false;
+
+  const { rows } = await pool.query(
+    `INSERT INTO ${IPANEL_ASSIGNMENTS_TABLE} (source_key, target_property, is_active)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (source_key)
+     DO UPDATE SET target_property = EXCLUDED.target_property, is_active = EXCLUDED.is_active, updated_at = now()
+     RETURNING source_key, target_property, is_active, created_at, updated_at`,
+    [sourceKey, targetProperty, isActive]
+  );
+
+  return mapIpanelAssignmentRow(rows?.[0] || {});
+}
+
 async function upsertMeasurementPropertyMapping(pool, payload) {
   await ensureMeasurementMappingsTable(pool);
+
+  if (isIpanelAssignmentPayload(payload)) {
+    return upsertIpanelPropertyAssignment(pool, payload);
+  }
 
   if (isProductionAssignmentPayload(payload)) {
     return upsertProductionPropertyAssignment(pool, payload);
@@ -480,6 +560,7 @@ function computeMeasurementMappedValues(measurementForm, mappings) {
   for (const mapping of Array.isArray(mappings) ? mappings : []) {
     if (!mapping?.is_active) continue;
     if (mapping?.source_section === PRODUCTION_SOURCE_SECTION) continue;
+    if (mapping?.source_section === IPANEL_SOURCE_SECTION) continue;
 
     const targetProperty = normalizeText(mapping?.target_property);
     const sourcePath = normalizeText(mapping?.source_path);
@@ -501,6 +582,8 @@ module.exports = {
   BASE_PRODUCTION_SOURCE_PROPERTIES,
   PRODUCTION_SOURCE_SECTION,
   PRODUCTION_ASSIGNMENTS_TABLE,
+  IPANEL_SOURCE_SECTION,
+  IPANEL_ASSIGNMENTS_TABLE,
   ensureMeasurementMappingsTable,
   listMeasurementSourceCatalog,
   listMeasurementPropertyMappings,
