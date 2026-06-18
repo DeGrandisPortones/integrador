@@ -154,6 +154,11 @@ async function ensureDescripcionSimpleSchema(pgPool = getIpanelPgPool()) {
   `);
 
   await pgPool.query(`
+    alter table public.preproduccion_valores_ipanels
+      add column if not exists source text;
+  `);
+
+  await pgPool.query(`
     alter table public.ipanel
       add column if not exists descripcion_simple text;
   `);
@@ -531,6 +536,7 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
         UPDATE public.preproduccion_valores_ipanels
         SET
           nv = $2,
+          source = coalesce(source, 'SQL'),
           fecha_nv = $3,
           fecha_plan_entrega = coalesce(fecha_plan_entrega, $4),
           descripcion = $5,
@@ -557,12 +563,13 @@ async function upsertPreproduccionValoresIpanelRow(pgPool, mapped) {
       INSERT INTO public.preproduccion_valores_ipanels (
         partida,
         nv,
+        source,
         fecha_nv,
         fecha_plan_entrega,
         descripcion,
         descripcion_simple,
         data
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+      ) VALUES ($1, $2, 'SQL', $3, $4, $5, $6, $7::jsonb)
     `,
     [
       mapped.partida,
