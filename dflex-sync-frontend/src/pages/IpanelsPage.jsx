@@ -488,7 +488,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                       <td>{toStr(r?.sucursal)}</td>
                       <td>{toStr(r?.numero ?? r?.partida)}</td>
                       <td>{toStr(r?.deposito)}</td>
-                      <td title={prod} style={{ minWidth: 240, whiteSpace: 'pre-wrap' }}>{prod}</td>
+                      <td title={prod} style={{ minWidth: 180, maxWidth: 260, maxHeight: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prod}</td>
                       <td><SimpleBadge value={getDescripcionSimple(r)} /></td>
                       <td>{r?.bloqueado_preproduccion ? <span style={{ color: '#991b1b', fontWeight: 700 }}>Sí</span> : ''}</td>
                       <td>{toStr(r?.cliente)}</td>
@@ -504,7 +504,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                       <td>{toStr(r?.idpedido)}</td>
                       <td>{toStr(r?.factura)}</td>
                       <td>{toStr(r?.remito)}</td>
-                      <td title={obs} style={{ minWidth: 220, whiteSpace: 'pre-wrap' }}>{obs}</td>
+                      <td title={obs} style={{ minWidth: 160, maxWidth: 240, maxHeight: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{obs}</td>
                     </tr>
                   );
                 })}
