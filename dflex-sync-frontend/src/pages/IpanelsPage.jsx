@@ -7,7 +7,7 @@ const IPANEL_SOURCE_SECTION = 'nota_venta_inv';
 
 const DEFAULT_IPANEL_TARGET_PROPERTIES = [
   'Nombre', 'RazSoc', 'nombre', 'direccion', 'localidad',
-  'descripcion', 'observaciones', 'fecha_plan_entrega',
+  'descripcion', 'observaciones', 'fecha_plan_entrega', 'DescripcionSimple',
 ];
 
 const IPANEL_SOURCE_PROPERTIES = [
