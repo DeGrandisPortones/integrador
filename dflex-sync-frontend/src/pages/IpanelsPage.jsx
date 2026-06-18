@@ -566,6 +566,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                   <th>Dirección</th>
                   <th>Localidad</th>
                   <th>Descripción</th>
+                  <th style={{ width: 110 }}>DescripcionSimple</th>
                   <th style={{ width: 95 }}>Fecha NV</th>
                   <th style={{ width: 100 }}>Fecha entrega</th>
                   <th style={{ width: 105 }}>Origen</th>
@@ -588,6 +589,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                       <td>{direccion}</td>
                       <td>{localidad}</td>
                       <td title={desc} style={{ maxWidth: 300, whiteSpace: 'pre-wrap' }}>{desc}</td>
+                      <td><SimpleBadge value={getDescripcionSimple(r)} /></td>
                       <td>{formatDate(r?.fecha_nv)}</td>
                       <td>{formatDate(r?.fecha_plan_entrega)}</td>
                       <td><SourceBadge /></td>
@@ -597,7 +599,7 @@ export default function IpanelsPage({ authHeader, canSyncIpanel }) {
                 })}
                 {!presLoading && !filteredPresRows.length && (
                   <tr>
-                    <td colSpan={10} style={{ padding: 20, textAlign: 'center', opacity: 0.6 }}>
+                    <td colSpan={11} style={{ padding: 20, textAlign: 'center', opacity: 0.6 }}>
                       {presRows.length ? 'Sin resultados para el filtro.' : 'No hay INV del Presupuestador todavía.'}
                     </td>
                   </tr>
