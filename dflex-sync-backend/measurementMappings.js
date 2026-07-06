@@ -583,9 +583,13 @@ async function reapplyProductionPropertyAssignments(pool, { nv } = {}) {
     }
   }
 
+  // jsonb_strip_nulls: si el origen (ej. porton_type) no existe para esta fila,
+  // NULLIF da null y la clave se elimina del objeto antes del merge, en vez de
+  // pisar con null un valor que ya estaba bien puesto (ej. Sistema calculado
+  // por otra via, como filas viejas que nunca pasaron por el Presupuestador).
   const sql = `
     UPDATE preproduccion_valores
-    SET data = data || jsonb_build_object(${objectParts.join(', ')}),
+    SET data = data || jsonb_strip_nulls(jsonb_build_object(${objectParts.join(', ')})),
         updated_at = now()
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     RETURNING nv
