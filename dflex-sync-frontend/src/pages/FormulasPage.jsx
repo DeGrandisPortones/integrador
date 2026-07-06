@@ -105,6 +105,15 @@ async function savePropertyMappingToBackend(payload, authHeader) {
   return readJsonResponse(res);
 }
 
+async function resyncProductionAssignmentsInBackend(authHeader, nv) {
+  const res = await fetch(`${API_BASE_URL}/api/property-mappings/resync-production`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(authHeader || {}) },
+    body: JSON.stringify(nv ? { nv } : {}),
+  });
+  return readJsonResponse(res);
+}
+
 async function fetchPropertyValueOptions(property, authHeader) {
   const params = new URLSearchParams();
   params.set('property', property);
@@ -254,6 +263,8 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
   const [productionSearch, setProductionSearch] = useState('');
   const [productionError, setProductionError] = useState('');
   const [savingProductionKey, setSavingProductionKey] = useState(null);
+  const [productionResyncLoading, setProductionResyncLoading] = useState(false);
+  const [productionResyncNv, setProductionResyncNv] = useState('');
 
   const [productionIntegratorNv, setProductionIntegratorNv] = useState('');
   const [productionBudgetNv, setProductionBudgetNv] = useState('');
@@ -676,9 +687,7 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
     }));
   }
 
-  async function handleLoadProductionComparison(e) {
-    e.preventDefault();
-
+  async function loadProductionComparison() {
     const integratorNv = productionIntegratorNv.trim();
     const budgetNv = productionBudgetNv.trim();
 
@@ -716,6 +725,45 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
       setProductionBudgetRow(null);
     } finally {
       setProductionCompareLoading(false);
+    }
+  }
+
+  async function handleLoadProductionComparison(e) {
+    e.preventDefault();
+    await loadProductionComparison();
+  }
+
+  async function handleResyncProduction() {
+    if (!canEditFormulas) {
+      window.alert('No tenes permisos para resincronizar asignaciones.');
+      return;
+    }
+
+    const activeCount = Object.values(productionDrafts || {})
+      .filter((draft) => draft?.is_active !== false && draft?.target_property).length;
+    const scopedNv = productionResyncNv.trim();
+
+    const ok = window.confirm(
+      scopedNv
+        ? `Esto vuelve a aplicar las ${activeCount} asignacion(es) activas de Nota de venta solo sobre el NV ${scopedNv}.\n\nQueres continuar?`
+        : `Esto vuelve a aplicar las ${activeCount} asignacion(es) activas de Nota de venta sobre TODOS los NV que ya estaban guardados en preproduccion (no solo los nuevos).\n\nQueres continuar?`
+    );
+    if (!ok) return;
+
+    setProductionResyncLoading(true);
+    setProductionError('');
+    try {
+      const data = await resyncProductionAssignmentsInBackend(authHeader, scopedNv);
+      window.alert(`Listo. Se actualizaron ${data.updated ?? 0} NV usando ${data.assignments_applied ?? 0} asignacion(es) activas.`);
+
+      if (productionIntegratorNv.trim() || productionBudgetNv.trim()) {
+        await loadProductionComparison();
+      }
+    } catch (err) {
+      console.error('Error resincronizando asignaciones desde Nota de venta:', err);
+      setProductionError(err.message || 'Error resincronizando asignaciones desde Nota de venta');
+    } finally {
+      setProductionResyncLoading(false);
     }
   }
 
@@ -1070,6 +1118,38 @@ export default function FormulasPage({ hasData, columns, formulas, permissions, 
         {mappingLoading && <div className="info">Cargando asignaciones...</div>}
         {productionError && <div className="error">⚠ {productionError}</div>}
         {productionCompareError && <div className="error">⚠ {productionCompareError}</div>}
+
+        {canEditFormulas && (
+          <div className="field-row" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ minWidth: 200 }}>
+              NV a resincronizar (opcional)
+              <br />
+              <input
+                type="text"
+                value={productionResyncNv}
+                onChange={(e) => setProductionResyncNv(e.target.value)}
+                placeholder="Vacio = todos"
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleResyncProduction}
+              disabled={productionResyncLoading}
+            >
+              {productionResyncLoading
+                ? 'Resincronizando...'
+                : productionResyncNv.trim()
+                ? `Resincronizar NV ${productionResyncNv.trim()}`
+                : 'Resincronizar todos los valores existentes'}
+            </button>
+            <span className="hint" style={{ margin: 0 }}>
+              Vuelve a aplicar estas asignaciones activas sobre los NV que ya estaban guardados en preproduccion
+              (util para los que quedaron con la propiedad vacia por haberse cargado antes de asignar el mapeo).
+              Dejalo vacio para aplicarlo a todos, o cargá un NV puntual para probar en uno solo.
+            </span>
+          </div>
+        )}
 
         <form
           className="field-row"

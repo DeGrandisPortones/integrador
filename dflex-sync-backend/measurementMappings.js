@@ -548,6 +548,54 @@ async function upsertMeasurementPropertyMapping(pool, payload) {
   return rows?.[0] || null;
 }
 
+async function reapplyProductionPropertyAssignments(pool, { nv } = {}) {
+  await ensureMeasurementMappingsTable(pool);
+
+  const assignmentRows = await listProductionPropertyAssignmentsRaw(pool);
+  const assignments = (assignmentRows || [])
+    .filter((row) => row?.is_active !== false)
+    .map((row) => ({
+      source_key: normalizeText(row?.source_key),
+      target_property: normalizeText(row?.target_property),
+    }))
+    .filter((row) => row.source_key && row.target_property);
+
+  if (!assignments.length) {
+    return { updated: 0, assignments_applied: 0 };
+  }
+
+  const params = [];
+  const objectParts = [];
+  let idx = 1;
+  for (const { source_key, target_property } of assignments) {
+    params.push(target_property, source_key);
+    objectParts.push(`$${idx}::text, NULLIF(data->>$${idx + 1}, '')`);
+    idx += 2;
+  }
+
+  const where = [];
+  if (nv) {
+    const nvParsed = parseInt(nv, 10);
+    if (!Number.isNaN(nvParsed)) {
+      params.push(nvParsed);
+      where.push(`nv = $${idx}`);
+      idx += 1;
+    }
+  }
+
+  const sql = `
+    UPDATE preproduccion_valores
+    SET data = data || jsonb_build_object(${objectParts.join(', ')}),
+        updated_at = now()
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+    RETURNING nv
+  `;
+
+  const { rows } = await pool.query(sql, params);
+
+  return { updated: rows.length, assignments_applied: assignments.length };
+}
+
 function listMeasurementSourceCatalog() {
   return MEASUREMENT_SOURCE_CATALOG;
 }
@@ -588,6 +636,7 @@ module.exports = {
   listMeasurementSourceCatalog,
   listMeasurementPropertyMappings,
   upsertMeasurementPropertyMapping,
+  reapplyProductionPropertyAssignments,
   computeMeasurementMappedValues,
   applyResolver,
   getByPath,

@@ -14,6 +14,7 @@ const {
   listMeasurementSourceCatalog,
   listMeasurementPropertyMappings,
   upsertMeasurementPropertyMapping,
+  reapplyProductionPropertyAssignments,
 } = require('./measurementMappings');
 
 // =====================
@@ -1783,6 +1784,28 @@ app.post(
       console.error('Error en /api/property-mappings (POST):', err);
       return res.status(500).json({
         error: 'Error guardando mapping',
+        details: err.message || String(err),
+      });
+    }
+  }
+);
+
+// Reaplica las asignaciones activas de Nota de venta (presupuestador_production_property_assignments)
+// sobre los NV que ya estaban guardados en preproduccion_valores. Sin "nv" en el body, aplica a todos.
+app.post(
+  '/api/property-mappings/resync-production',
+  requireAuth,
+  attachRole,
+  requireRole(['admin', 'formula_editor']),
+  async (req, res) => {
+    try {
+      const nv = req.body?.nv ? parseInt(req.body.nv, 10) : null;
+      const result = await reapplyProductionPropertyAssignments(supabasePool, nv ? { nv } : {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('Error en /api/property-mappings/resync-production:', err);
+      return res.status(500).json({
+        error: 'Error resincronizando valores desde Nota de venta',
         details: err.message || String(err),
       });
     }
