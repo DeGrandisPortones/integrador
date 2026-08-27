@@ -1,0 +1,22 @@
+{
+  "name": "arca-comprobantes-backend",
+  "version": "1.0.0",
+  "description": "Importa comprobantes recibidos (CSV de ARCA) y los carga en Odoo como facturas de compra + pago conciliado",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.5.6",
+    "dotenv": "^16.4.0",
+    "express": "^4.19.0",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

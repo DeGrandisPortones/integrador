@@ -1,0 +1,147 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #0f1117;
+  color: #e6e6e6;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.app { max-width: 1400px; margin: 0 auto; padding: 24px; }
+h1 { margin-bottom: 4px; }
+.subtitle { color: #9aa0aa; margin-top: 0; }
+
+.app-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.logout-btn {
+  background: transparent;
+  color: #9aa0aa;
+  border: 1px solid #3a3f4b;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.logout-btn:hover { color: #e6e6e6; border-color: #6a6f7a; }
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f1117;
+}
+.login-box {
+  background: #171923;
+  border: 1px solid #2a2e38;
+  border-radius: 10px;
+  padding: 32px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-box h1 { font-size: 20px; margin: 0; }
+.login-box label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #9aa0aa; }
+.login-box input {
+  background: #0f1117;
+  color: #e6e6e6;
+  border: 1px solid #3a3f4b;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.login-box button {
+  background: #4c6ef5;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.login-box button:disabled { background: #2a2e38; color: #6a6f7a; cursor: not-allowed; }
+
+.upload-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px dashed #3a3f4b;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+.banner {
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.banner-error { background: #3a1a1a; color: #ff8a8a; border: 1px solid #6b2b2b; }
+.banner-warning { background: #3a3315; color: #ffd479; border: 1px solid #6b5a2b; }
+
+.resumen { color: #9aa0aa; }
+
+.table-wrap { overflow-x: auto; border: 1px solid #2a2e38; border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 1100px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid #22252e; text-align: left; font-size: 13px; white-space: nowrap; }
+th { background: #171923; position: sticky; top: 0; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+tr.row-loaded { opacity: 0.5; }
+tr.row-warning { background: #241f0f; }
+
+.badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+.badge-ok { background: #163a2a; color: #6fd39a; }
+.badge-warning { background: #3a3315; color: #ffd479; cursor: help; }
+.badge-pending { background: #1e2430; color: #9db4d9; }
+
+select, .account-picker input {
+  background: #171923;
+  color: #e6e6e6;
+  border: 1px solid #3a3f4b;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  min-width: 160px;
+}
+
+.account-picker { position: relative; }
+.account-picker input { width: 220px; }
+.account-picker-list {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: #1c1f29;
+  border: 1px solid #3a3f4b;
+  border-radius: 6px;
+}
+.account-picker-list li { padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: normal; }
+.account-picker-list li:hover { background: #2a2e3a; }
+.acc-code { color: #9aa0aa; margin-right: 6px; }
+
+.actions { margin-top: 16px; display: flex; align-items: center; gap: 12px; }
+.actions button {
+  background: #4c6ef5;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.actions button:disabled { background: #2a2e38; color: #6a6f7a; cursor: not-allowed; }
+.hint { color: #9aa0aa; font-size: 13px; }
+
+.resultados { margin-top: 24px; }
+.resultados ul { list-style: none; padding: 0; }
+.resultados li { padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+.res-ok { background: #163a2a; color: #6fd39a; }
+.res-warning { background: #3a3315; color: #ffd479; }
+.res-error { background: #3a1a1a; color: #ff8a8a; }
