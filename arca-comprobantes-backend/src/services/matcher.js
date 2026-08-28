@@ -13,7 +13,10 @@ function onlyDigits(str) {
 }
 
 function formatDocumentNumber(puntoVenta, numero) {
-  const pv = onlyDigits(puntoVenta).padStart(4, '0');
+  // Confirmado contra ~500 facturas reales en Odoo (2026-08-27): el segmento de punto
+  // de venta usa 5 dígitos, no 4 (ARCA permite puntos de venta de hasta 5 dígitos para
+  // facturación electrónica, y así los guarda esta instalación de Odoo).
+  const pv = onlyDigits(puntoVenta).padStart(5, '0');
   const num = onlyDigits(numero).padStart(8, '0');
   return `${pv}-${num}`;
 }
