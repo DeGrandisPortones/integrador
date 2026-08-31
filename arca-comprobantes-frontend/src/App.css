@@ -114,19 +114,22 @@ select, .account-picker input {
 .account-picker { position: relative; }
 .account-picker input { width: 220px; }
 .account-picker-list {
-  position: absolute;
-  z-index: 10;
-  top: 100%;
-  left: 0;
-  width: 320px;
   max-height: 240px;
   overflow-y: auto;
-  margin: 2px 0 0;
+  margin: 0;
   padding: 4px;
   list-style: none;
   background: #1c1f29;
   border: 1px solid #3a3f4b;
   border-radius: 6px;
+}
+/* Portal a document.body: fixed a la posición en pantalla del input, no relativo a la
+   fila con scroll — ver comentario en AccountPicker.jsx. */
+.account-picker-list-portal {
+  position: fixed;
+  z-index: 1000;
+  width: 320px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 .account-picker-list li { padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: normal; }
 .account-picker-list li:hover { background: #2a2e3a; }
