@@ -28,6 +28,10 @@ function ComprobantesApp({ onLogout }) {
   const [resultados, setResultados] = useState(null);
   const [errorGeneral, setErrorGeneral] = useState(null);
   const [soloPendientes, setSoloPendientes] = useState(true);
+  const sinProveedor = useMemo(
+    () => (resultados || []).filter((r) => !r.ok && r.code === 'proveedor_no_encontrado'),
+    [resultados]
+  );
 
   useEffect(() => {
     getJournals().then(setJournals).catch((e) => setErrorGeneral(e.message));
@@ -239,14 +243,36 @@ function ComprobantesApp({ onLogout }) {
       {resultados && (
         <div className="resultados">
           <h2>Resultado de la carga</h2>
+          {sinProveedor.length > 0 && (
+            <div className="banner banner-warning">
+              {sinProveedor.length} comprobante(s) no se pudieron cargar porque el proveedor no existe en Odoo —
+              cargalos primero como contacto y volvé a intentar:
+              <ul className="lista-proveedores-faltantes">
+                {sinProveedor.map((r, i) => (
+                  <li key={i}>
+                    {r.comprobante.denominacionEmisor} (CUIT {r.comprobante.cuit})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <ul>
             {resultados.map((r, i) => (
-              <li key={i} className={r.ok ? (r.status === 'borrador_revisar' ? 'res-warning' : 'res-ok') : 'res-error'}>
+              <li
+                key={i}
+                className={
+                  r.ok
+                    ? r.status === 'borrador_revisar' ? 'res-warning' : 'res-ok'
+                    : r.code === 'proveedor_no_encontrado' ? 'res-missing' : 'res-error'
+                }
+              >
                 {r.ok
                   ? r.status === 'borrador_revisar'
                     ? `${r.documentNumber}: cargado como BORRADOR en Odoo (move #${r.moveId}) — revisar diferencia de $${money(-r.diferencia)}`
                     : `${r.documentNumber}: cargado y pagado (move #${r.moveId})`
-                  : `Error: ${r.error}`}
+                  : r.code === 'proveedor_no_encontrado'
+                    ? `⚠ Proveedor no existe en Odoo: ${r.comprobante.denominacionEmisor} (CUIT ${r.comprobante.cuit})`
+                    : `Error: ${r.error}`}
               </li>
             ))}
           </ul>

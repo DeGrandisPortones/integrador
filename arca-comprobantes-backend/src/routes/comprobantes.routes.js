@@ -88,7 +88,7 @@ router.post('/cargar', async (req, res) => {
       const resultado = await crearFacturaYPago(comprobante, comprobante.journalKey, comprobante.accountId);
       resultados.push({ ok: true, ...resultado });
     } catch (err) {
-      resultados.push({ ok: false, comprobante, error: err.message });
+      resultados.push({ ok: false, comprobante, error: err.message, code: err.code || null });
     }
   }
 

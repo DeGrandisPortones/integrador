@@ -25,12 +25,16 @@ async function crearFacturaYPago(comprobante, journalKey, accountId) {
 
   const partner = await findPartnerByCuit(comprobante.cuit);
   if (!partner) {
-    throw new Error(`No se encontró en Odoo un proveedor con CUIT ${comprobante.cuit}. Cargalo primero como contacto.`);
+    const err = new Error(`No se encontró en Odoo un proveedor con CUIT ${comprobante.cuit}. Cargalo primero como contacto.`);
+    err.code = 'proveedor_no_encontrado';
+    throw err;
   }
 
   const docType = await findDocumentTypeByCode(comprobante.tipoComprobanteCodigo);
   if (!docType) {
-    throw new Error(`Tipo de comprobante ARCA "${comprobante.tipoComprobanteCodigo}" no existe en Odoo.`);
+    const err = new Error(`Tipo de comprobante ARCA "${comprobante.tipoComprobanteCodigo}" no existe en Odoo.`);
+    err.code = 'tipo_comprobante_no_existe';
+    throw err;
   }
 
   const documentNumber = formatDocumentNumber(comprobante.puntoVenta, comprobante.numero);
