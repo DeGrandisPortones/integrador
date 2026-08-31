@@ -14,6 +14,13 @@ const TAX_NO_GRAVADO = 55; // "0% NT"
 const TAX_EXENTO = 57; // "0% EXEMPT"
 const CUENTA_OTROS_TRIBUTOS = 990; // 1.1.4.02.001 "Percepciones iva"
 
+// Producto a usar en las líneas de compra, confirmado con administración el 2026-08-31
+// (product.template id 3738 "VIATICOS" -> variante real product.product id 4209, que es
+// lo que espera el campo product_id de account.move.line). Se aplica a las líneas que
+// representan la compra en sí (los tramos de IVA + no gravado + exento), no a "Otros
+// Tributos" ni al ajuste de revisión, que son percepciones/diferencias, no el producto.
+const PRODUCTO_ID = 4209;
+
 const TOLERANCIA = 0.02;
 
 function round2(n) {
@@ -49,6 +56,7 @@ function construirLineas(fila, accountId) {
     if (neto === 0) continue;
     lineas.push({
       name: `Comprobante ARCA ${fila.puntoVenta}-${fila.numero} — ${bracket.label}`,
+      product_id: PRODUCTO_ID,
       account_id: accountId,
       quantity: 1,
       price_unit: neto,
@@ -59,6 +67,7 @@ function construirLineas(fila, accountId) {
   if (fila.impNetoNoGravado) {
     lineas.push({
       name: `Comprobante ARCA ${fila.puntoVenta}-${fila.numero} — No gravado`,
+      product_id: PRODUCTO_ID,
       account_id: accountId,
       quantity: 1,
       price_unit: fila.impNetoNoGravado,
@@ -69,6 +78,7 @@ function construirLineas(fila, accountId) {
   if (fila.impExento) {
     lineas.push({
       name: `Comprobante ARCA ${fila.puntoVenta}-${fila.numero} — Exento`,
+      product_id: PRODUCTO_ID,
       account_id: accountId,
       quantity: 1,
       price_unit: fila.impExento,
@@ -89,4 +99,4 @@ function construirLineas(fila, accountId) {
   return lineas;
 }
 
-module.exports = { validarCierre, construirLineas, TAX_BRACKETS, CUENTA_OTROS_TRIBUTOS };
+module.exports = { validarCierre, construirLineas, TAX_BRACKETS, CUENTA_OTROS_TRIBUTOS, PRODUCTO_ID };
