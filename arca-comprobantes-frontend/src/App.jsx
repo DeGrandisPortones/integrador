@@ -27,6 +27,7 @@ function ComprobantesApp({ onLogout }) {
   const [subiendo, setSubiendo] = useState(false);
   const [resultados, setResultados] = useState(null);
   const [errorGeneral, setErrorGeneral] = useState(null);
+  const [soloPendientes, setSoloPendientes] = useState(true);
 
   useEffect(() => {
     getJournals().then(setJournals).catch((e) => setErrorGeneral(e.message));
@@ -61,6 +62,10 @@ function ComprobantesApp({ onLogout }) {
   );
   const conError = useMemo(() => filas.filter((f) => f.reason === 'error_verificando'), [filas]);
   const seleccionadas = seleccionables.filter((f) => rowState[rowKey(f)]?.selected);
+  const filasVisibles = useMemo(
+    () => (soloPendientes ? filas.filter((f) => !f.loaded) : filas),
+    [filas, soloPendientes]
+  );
 
   const listoParaCargar =
     seleccionadas.length > 0 &&
@@ -114,10 +119,20 @@ function ComprobantesApp({ onLogout }) {
 
       {filas.length > 0 && (
         <>
-          <p className="resumen">
-            {filas.length} comprobantes en el archivo — {filas.filter((f) => f.loaded).length} ya cargados en Odoo,{' '}
-            {seleccionables.length} pendientes.
-          </p>
+          <div className="resumen-bar">
+            <p className="resumen">
+              {filas.length} comprobantes en el archivo — {filas.filter((f) => f.loaded).length} ya cargados en Odoo,{' '}
+              {seleccionables.length} pendientes.
+            </p>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={soloPendientes}
+                onChange={(e) => setSoloPendientes(e.target.checked)}
+              />
+              Mostrar solo pendientes
+            </label>
+          </div>
           {conError.length > 0 && (
             <div className="banner banner-error">
               {conError.length} comprobante(s) no se pudieron verificar contra Odoo (falla de red puntual) — no se
@@ -142,7 +157,14 @@ function ComprobantesApp({ onLogout }) {
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f) => {
+                {filasVisibles.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="tabla-vacia">
+                      {soloPendientes ? 'No hay comprobantes pendientes 🎉' : 'No hay comprobantes.'}
+                    </td>
+                  </tr>
+                )}
+                {filasVisibles.map((f) => {
                   const key = rowKey(f);
                   const st = rowState[key] || {};
                   const yaCargado = f.loaded;
