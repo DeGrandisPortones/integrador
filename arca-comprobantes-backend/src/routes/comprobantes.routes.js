@@ -6,6 +6,12 @@ const { validarCierre } = require('../services/breakdown');
 const { crearFacturaYPago } = require('../services/odooLoader');
 const { PAYMENT_JOURNALS } = require('../config/paymentJournals');
 const { odooExecuteKw, ODOO_COMPANY_ID } = require('../odooClient');
+const { mapWithConcurrency, conReintento } = require('../services/concurrency');
+
+// Cuántas verificaciones contra Odoo corren en simultáneo al procesar un CSV. Con esto
+// sin límite, un archivo de 150-200 filas disparaba cientos de llamadas a la vez y una
+// parte fallaba por sobrecarga (ver services/concurrency.js).
+const CONCURRENCIA_MATCHING = 8;
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -51,17 +57,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         `Puede ser un archivo de otra empresa — revisá antes de cargar.`;
     }
 
-    const filasConEstado = await Promise.all(
-      filas.map(async (fila) => {
-        const cierre = validarCierre(fila);
-        try {
-          const estado = await isComprobanteLoaded(fila);
-          return { ...fila, ...estado, cierre };
-        } catch (err) {
-          return { ...fila, loaded: false, reason: 'error_verificando', error: err.message, cierre };
-        }
-      })
-    );
+    const filasConEstado = await mapWithConcurrency(filas, CONCURRENCIA_MATCHING, async (fila) => {
+      const cierre = validarCierre(fila);
+      try {
+        const estado = await conReintento(() => isComprobanteLoaded(fila));
+        return { ...fila, ...estado, cierre };
+      } catch (err) {
+        return { ...fila, loaded: false, reason: 'error_verificando', error: err.message, cierre };
+      }
+    });
 
     res.json({ total: filasConEstado.length, filas: filasConEstado, avisoEmpresaDistinta });
   } catch (err) {

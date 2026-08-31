@@ -55,7 +55,11 @@ function ComprobantesApp({ onLogout }) {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
 
-  const seleccionables = useMemo(() => filas.filter((f) => !f.loaded), [filas]);
+  const seleccionables = useMemo(
+    () => filas.filter((f) => !f.loaded && f.reason !== 'error_verificando'),
+    [filas]
+  );
+  const conError = useMemo(() => filas.filter((f) => f.reason === 'error_verificando'), [filas]);
   const seleccionadas = seleccionables.filter((f) => rowState[rowKey(f)]?.selected);
 
   const listoParaCargar =
@@ -114,6 +118,12 @@ function ComprobantesApp({ onLogout }) {
             {filas.length} comprobantes en el archivo — {filas.filter((f) => f.loaded).length} ya cargados en Odoo,{' '}
             {seleccionables.length} pendientes.
           </p>
+          {conError.length > 0 && (
+            <div className="banner banner-error">
+              {conError.length} comprobante(s) no se pudieron verificar contra Odoo (falla de red puntual) — no se
+              muestran como pendientes ni se pueden seleccionar. Volvé a subir el archivo para reintentarlos.
+            </div>
+          )}
 
           <div className="table-wrap">
             <table>
@@ -136,13 +146,14 @@ function ComprobantesApp({ onLogout }) {
                   const key = rowKey(f);
                   const st = rowState[key] || {};
                   const yaCargado = f.loaded;
+                  const errorVerificando = f.reason === 'error_verificando';
                   const revisar = !f.cierre?.valido;
                   return (
-                    <tr key={key} className={yaCargado ? 'row-loaded' : revisar ? 'row-warning' : ''}>
+                    <tr key={key} className={yaCargado ? 'row-loaded' : errorVerificando ? 'row-error' : revisar ? 'row-warning' : ''}>
                       <td>
                         <input
                           type="checkbox"
-                          disabled={yaCargado}
+                          disabled={yaCargado || errorVerificando}
                           checked={!!st.selected}
                           onChange={(e) => updateRow(key, { selected: e.target.checked })}
                         />
@@ -155,12 +166,17 @@ function ComprobantesApp({ onLogout }) {
                       <td className="num">{money(f.impTotal)}</td>
                       <td>
                         {yaCargado && <span className="badge badge-ok">Ya cargado</span>}
-                        {!yaCargado && revisar && (
+                        {!yaCargado && errorVerificando && (
+                          <span className="badge badge-error" title={f.error || 'Fallo al consultar Odoo'}>
+                            Error al verificar — no confiar, reintentar
+                          </span>
+                        )}
+                        {!yaCargado && !errorVerificando && revisar && (
                           <span className="badge badge-warning" title={`Diferencia sin discriminar: $${money(-f.cierre.diferencia)}`}>
                             Se carga como borrador
                           </span>
                         )}
-                        {!yaCargado && !revisar && <span className="badge badge-pending">Pendiente</span>}
+                        {!yaCargado && !errorVerificando && !revisar && <span className="badge badge-pending">Pendiente</span>}
                       </td>
                       <td>
                         {!yaCargado && (
