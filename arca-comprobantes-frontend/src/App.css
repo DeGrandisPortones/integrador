@@ -81,6 +81,17 @@ h1 { margin-bottom: 4px; }
 
 .resumen { color: #9aa0aa; margin: 0; }
 .resumen-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+.resumen-controles { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.busqueda-input {
+  background: #171923;
+  color: #e6e6e6;
+  border: 1px solid #3a3f4b;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  width: 320px;
+}
+.busqueda-input::placeholder { color: #6a6f7a; }
 .switch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cfd3da; cursor: pointer; user-select: none; white-space: nowrap; }
 .switch input { width: 16px; height: 16px; cursor: pointer; }
 .tabla-vacia { text-align: center; color: #6a6f7a; padding: 24px; }

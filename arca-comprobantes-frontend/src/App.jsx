@@ -18,6 +18,21 @@ function rowKey(fila) {
   return `${fila.tipoComprobanteCodigo}-${fila.puntoVenta}-${fila.numero}-${fila.cuit}`;
 }
 
+function normalizar(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+}
+
+function matcheaBusqueda(fila, textoBusqueda) {
+  const q = normalizar(textoBusqueda).trim();
+  if (!q) return true;
+  const comprobante = `${fila.puntoVenta}-${fila.numero}`;
+  const campos = [fila.cuit, fila.denominacionEmisor, fila.fechaEmision, comprobante];
+  return campos.some((c) => normalizar(c).includes(q));
+}
+
 function ComprobantesApp({ onLogout }) {
   const [journals, setJournals] = useState([]);
   const [filas, setFilas] = useState([]);
@@ -28,6 +43,7 @@ function ComprobantesApp({ onLogout }) {
   const [resultados, setResultados] = useState(null);
   const [errorGeneral, setErrorGeneral] = useState(null);
   const [soloPendientes, setSoloPendientes] = useState(true);
+  const [busqueda, setBusqueda] = useState('');
   const sinProveedor = useMemo(
     () => (resultados || []).filter((r) => !r.ok && r.code === 'proveedor_no_encontrado'),
     [resultados]
@@ -66,10 +82,10 @@ function ComprobantesApp({ onLogout }) {
   );
   const conError = useMemo(() => filas.filter((f) => f.reason === 'error_verificando'), [filas]);
   const seleccionadas = seleccionables.filter((f) => rowState[rowKey(f)]?.selected);
-  const filasVisibles = useMemo(
-    () => (soloPendientes ? filas.filter((f) => !f.loaded) : filas),
-    [filas, soloPendientes]
-  );
+  const filasVisibles = useMemo(() => {
+    const base = soloPendientes ? filas.filter((f) => !f.loaded) : filas;
+    return base.filter((f) => matcheaBusqueda(f, busqueda));
+  }, [filas, soloPendientes, busqueda]);
 
   const listoParaCargar =
     seleccionadas.length > 0 &&
@@ -128,14 +144,23 @@ function ComprobantesApp({ onLogout }) {
               {filas.length} comprobantes en el archivo — {filas.filter((f) => f.loaded).length} ya cargados en Odoo,{' '}
               {seleccionables.length} pendientes.
             </p>
-            <label className="switch">
+            <div className="resumen-controles">
               <input
-                type="checkbox"
-                checked={soloPendientes}
-                onChange={(e) => setSoloPendientes(e.target.checked)}
+                type="text"
+                className="busqueda-input"
+                placeholder="Buscar por CUIT, razón social, fecha o comprobante..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
               />
-              Mostrar solo pendientes
-            </label>
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={soloPendientes}
+                  onChange={(e) => setSoloPendientes(e.target.checked)}
+                />
+                Mostrar solo pendientes
+              </label>
+            </div>
           </div>
           {conError.length > 0 && (
             <div className="banner banner-error">
@@ -164,7 +189,9 @@ function ComprobantesApp({ onLogout }) {
                 {filasVisibles.length === 0 && (
                   <tr>
                     <td colSpan={10} className="tabla-vacia">
-                      {soloPendientes ? 'No hay comprobantes pendientes 🎉' : 'No hay comprobantes.'}
+                      {busqueda.trim()
+                        ? 'Ningún comprobante coincide con la búsqueda.'
+                        : soloPendientes ? 'No hay comprobantes pendientes 🎉' : 'No hay comprobantes.'}
                     </td>
                   </tr>
                 )}
