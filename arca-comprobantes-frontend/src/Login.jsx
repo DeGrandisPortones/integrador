@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { setStoredAuth } from './auth.js';
 import { verificarCredenciales } from './api.js';
 
-export default function Login({ onSuccess }) {
+export default function Login({ onSuccess, theme, onToggleTheme }) {
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -29,6 +29,9 @@ export default function Login({ onSuccess }) {
 
   return (
     <div className="login-screen">
+      <button type="button" className="theme-toggle" onClick={onToggleTheme}>
+        {theme === 'dark' ? '☀ Claro' : '🌙 Oscuro'}
+      </button>
       <form className="login-box" onSubmit={handleSubmit}>
         <h1>Comprobantes ARCA → Odoo</h1>
         <p className="subtitle">Ingresá para continuar.</p>

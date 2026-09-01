@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AccountPicker from './components/AccountPicker.jsx';
 import Login from './Login.jsx';
 import { getStoredAuth, clearStoredAuth } from './auth.js';
+import { getStoredTheme, applyTheme } from './theme.js';
 import { getJournals, uploadCsv, cargarComprobantes } from './api.js';
 
 const TIPO_COMPROBANTE_LABELS = {
@@ -33,7 +34,7 @@ function matcheaBusqueda(fila, textoBusqueda) {
   return campos.some((c) => normalizar(c).includes(q));
 }
 
-function ComprobantesApp({ onLogout }) {
+function ComprobantesApp({ onLogout, theme, onToggleTheme }) {
   const [journals, setJournals] = useState([]);
   const [filas, setFilas] = useState([]);
   const [aviso, setAviso] = useState(null);
@@ -126,7 +127,12 @@ function ComprobantesApp({ onLogout }) {
           <h1>Comprobantes ARCA → Odoo</h1>
           <p className="subtitle">Importá el CSV de "Mis Comprobantes Recibidos" de ARCA y cargá en Odoo lo que falte.</p>
         </div>
-        <button className="logout-btn" onClick={onLogout}>Cerrar sesión</button>
+        <div className="app-header-actions">
+          <button type="button" className="theme-toggle" onClick={onToggleTheme}>
+            {theme === 'dark' ? '☀ Claro' : '🌙 Oscuro'}
+          </button>
+          <button className="logout-btn" onClick={onLogout}>Cerrar sesión</button>
+        </div>
       </div>
 
       <div className="upload-box">
@@ -311,6 +317,11 @@ function ComprobantesApp({ onLogout }) {
 
 export default function App() {
   const [autenticado, setAutenticado] = useState(!!getStoredAuth());
+  const [theme, setTheme] = useState(getStoredTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     function onUnauthorized() {
@@ -325,6 +336,12 @@ export default function App() {
     setAutenticado(false);
   }
 
-  if (!autenticado) return <Login onSuccess={() => setAutenticado(true)} />;
-  return <ComprobantesApp onLogout={handleLogout} />;
+  function handleToggleTheme() {
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  }
+
+  if (!autenticado) {
+    return <Login onSuccess={() => setAutenticado(true)} theme={theme} onToggleTheme={handleToggleTheme} />;
+  }
+  return <ComprobantesApp onLogout={handleLogout} theme={theme} onToggleTheme={handleToggleTheme} />;
 }
