@@ -73,15 +73,23 @@ async function isComprobanteLoaded(comprobante) {
 
   const documentNumber = formatDocumentNumber(puntoVenta, numero);
 
+  // OJO: `l10n_latam_document_number` es un campo calculado sin búsqueda real en esta
+  // instalación de Odoo — un filtro por igualdad contra ese campo se ignora en
+  // silencio (Odoo devuelve TODOS los account.move, sin filtrar), lo que causaba falsos
+  // positivos: cualquier factura del mismo proveedor y tipo aparecía como "ya cargada"
+  // sin importar el número real (detectado el 2026-09-01 con un caso real de Santa
+  // Bárbara). El campo `name` sí es buscable y trae el número real con un prefijo del
+  // tipo de comprobante (ej. "FA-A 00095-00003540"), así que filtramos por ese como
+  // sufijo en vez de por l10n_latam_document_number.
   const moves = await odooExecuteKw('account.move', 'search_read', [
     [
       ['move_type', 'in', ['in_invoice', 'in_refund']],
       ['company_id', '=', ODOO_COMPANY_ID],
       ['partner_id', '=', partner.id],
       ['l10n_latam_document_type_id', '=', docType.id],
-      ['l10n_latam_document_number', '=', documentNumber],
+      ['name', 'ilike', documentNumber],
     ],
-  ], { fields: ['id', 'state'], limit: 1 });
+  ], { fields: ['id', 'state', 'name'], limit: 1 });
 
   if (moves.length > 0) {
     return { loaded: true, moveId: moves[0].id, partnerId: partner.id, documentTypeId: docType.id };
